@@ -1,0 +1,43 @@
+# Voice commands. Each key is a Home Assistant intent_script entry.
+# `phrases` are what you can say; add variants as you notice ASR misses.
+# `speak: true` returns a spoken answer (queries only). Actions stay text-only.
+
+language: bg
+
+match:
+  threshold: 88   # RapidFuzz WRatio, 0-100
+  margin: 5       # best must beat second-best by this much
+
+commands:
+  HallLightOff:
+    speak: false
+    phrases:
+      - "изключи лампата в хола"
+      - "изгаси лампата в хола"
+      - "изключи осветлението в хола"
+    hotwords:
+      - "лампата"
+      - "хола"
+
+  CorridorLightOn:
+    speak: false
+    phrases:
+      - "светни лампата в коридора"
+      - "включи лампата в коридора"
+      - "светни осветлението в коридора"
+    hotwords:
+      - "лампата"
+      - "коридора"
+
+  # Example of a spoken query. Uncomment together with the matching
+  # intent_script entry in homeassistant/intent_script.yaml.
+  #
+  # OutsideTemperature:
+  #   speak: true
+  #   phrases:
+  #     - "каква е температурата отвън"
+  #     - "колко градуса е навън"
+  #     - "каква е температурата навън"
+  #   hotwords:
+  #     - "температурата"
+  #     - "отвън"

@@ -1,0 +1,31 @@
+# Copy this into your Home Assistant configuration.yaml (or merge the entries).
+# Each key must also exist in config/commands.yaml with the same name.
+# `speech.text` is the reply the gateway returns; it is spoken only when the
+# command is marked `speak: true` there.
+
+intent_script:
+  HallLightOff:
+    speech:
+      text: "Изключих лампата в хола."
+    action:
+      - action: light.turn_off
+        target:
+          entity_id: light.hall_ceiling   # <-- your entity
+
+  CorridorLightOn:
+    speech:
+      text: "Светнах лампата в коридора."
+    action:
+      - action: light.turn_on
+        target:
+          entity_id: light.corridor       # <-- your entity
+
+  # Spoken-answer example. Uncomment together with the block in
+  # config/commands.yaml, and point at your outdoor temperature sensor.
+  #
+  # OutsideTemperature:
+  #   speech:
+  #     text: >-
+  #       {% set t = states('sensor.outdoor_temperature') | float(0) | round(1) %}
+  #       В момента температурата навън е {{ t | replace('.', ',') }}
+  #       {{ 'градус' if t == 1 else 'градуса' }}.

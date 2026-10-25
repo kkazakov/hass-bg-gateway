@@ -1,0 +1,21 @@
+meta {
+  name: command
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/command
+  body: json
+  auth: none
+}
+
+headers {
+  X-API-Key: {{apiKey}}
+}
+
+body:json {
+  {
+    "text": "изключи лампата в хола"
+  }
+}

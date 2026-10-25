@@ -1,0 +1,12 @@
+services:
+  gateway:
+    build: .
+    container_name: hass-bulgarian-commands
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/app/models
+      - ./config:/app/config:ro
+    restart: unless-stopped
