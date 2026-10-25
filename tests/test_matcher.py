@@ -72,6 +72,30 @@ def test_exact_phrase_beats_near_identical_variant() -> None:
     assert match.score == pytest.approx(100.0)
 
 
+def test_opposite_verb_is_rejected() -> None:
+    matcher = Matcher(
+        {"HallLightOff": CommandConfig(phrases=["изключи лампата в хола"])},
+        threshold=80,
+        margin=5,
+    )
+    # "включи" vs "изключи" scores ~93; acting on it would turn the light off.
+    match = matcher.match("включи лампата в хола")
+    assert not match.ok
+    assert "opposite action" in (match.reason or "")
+
+
+def test_asr_slip_on_the_verb_is_still_allowed() -> None:
+    matcher = Matcher(
+        {"CorridorLightOn": CommandConfig(phrases=["светни лампата в коридора"])},
+        threshold=88,
+        margin=5,
+    )
+    # "светли" is not a known verb, so it is treated as an ASR slip, not an opposite.
+    match = matcher.match("светли лампата в коридора")
+    assert match.ok
+    assert match.intent == "CorridorLightOn"
+
+
 def test_ambiguous_input_is_rejected() -> None:
     matcher = Matcher(
         {

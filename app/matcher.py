@@ -18,6 +18,26 @@ from .config import CommandConfig
 _NON_WORD = re.compile(r"[^\w\s]", re.UNICODE)
 _SPACES = re.compile(r"\s+")
 
+# Bulgarian verbs that mean opposite things. Fuzzy matching must never turn
+# "включи" (on) into "изключи" (off) just because they differ by two letters.
+_VERB_CLASSES: dict[str, frozenset[str]] = {
+    "on": frozenset({"включи", "включвам", "пусни", "светни", "запали", "стартирай"}),
+    "off": frozenset({"изключи", "изключвам", "изгаси", "угаси", "загаси", "спри"}),
+    "open": frozenset({"отвори", "открий", "вдигни"}),
+    "close": frozenset({"затвори", "закрий", "смъкни", "спусни", "свали"}),
+    "raise": frozenset({"увеличи", "качи", "усили", "вдигни"}),
+    "lower": frozenset({"намали", "сниши", "свали"}),
+}
+
+
+def _verb_classes(tokens: list[str]) -> set[str]:
+    found: set[str] = set()
+    for token in tokens:
+        for name, words in _VERB_CLASSES.items():
+            if token in words:
+                found.add(name)
+    return found
+
 
 def normalise(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace, normalise Unicode."""
@@ -100,6 +120,20 @@ class Matcher:
             return Match(
                 None, None, float(best_score), float(second_score), transcript,
                 f"below threshold ({best_score:.1f} < {self._threshold})",
+            )
+
+        # Guard against opposite verbs ("включи" vs "изключи"): a wrong action
+        # is worse than asking to repeat.
+        query_classes = _verb_classes(query.split())
+        phrase_classes = _verb_classes(best_choice.split())
+        if query_classes and phrase_classes and not (query_classes & phrase_classes):
+            return Match(
+                None, None, float(best_score), float(second_score), transcript,
+                "opposite action ("
+                + ",".join(sorted(query_classes))
+                + " vs "
+                + ",".join(sorted(phrase_classes))
+                + ")",
             )
         if second_score and (best_score - second_score) < self._margin:
             return Match(
