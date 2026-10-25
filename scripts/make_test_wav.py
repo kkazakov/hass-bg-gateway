@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Synthesize a test WAV with the Bulgarian Piper voice (16 kHz mono PCM16).
 
-Usage:  python scripts/make_test_wav.py "изключи лампата в хола" out.wav
+Usage:  python scripts/make_test_wav.py "изключи лампата" out.wav
 Requires the Piper voice in models/piper (run models/fetch_models.sh first).
 """
 from __future__ import annotations

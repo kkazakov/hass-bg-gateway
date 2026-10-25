@@ -4,8 +4,8 @@ Bulgarian voice control for **one Home Assistant instance**, built for speed and
 privacy: on-device speech recognition, a small fixed command catalogue, and no
 LLM in the request path.
 
-Say **„изключи лампата в хола“** → the gateway transcribes it, matches the
-configured phrase, calls `light.turn_off`, and returns a text reply in ~100 ms.
+Say **„изключи лампата“** → the gateway transcribes it, matches the configured
+phrase, calls `light.turn_off`, and returns a text reply in ~100 ms.
 Sensor questions such as **„каква е температурата навън“** also return spoken
 audio, with a female Bulgarian voice.
 
@@ -98,25 +98,40 @@ Expected: `status: ok`, `asr.ready: true`, `tts.ready: true`, `ha.ready: true`.
 
 ### 5. Run a command (text, then audio)
 
+The starter catalogue points at `light.living_room` and
+`sensor.outside_temperature`. Replace them in `config/commands.yaml` with real
+entities first; otherwise the gateway returns `502` (entity/service not found).
+The sample WAVs match the starter phrases.
+
 ```bash
 curl -s -X POST http://127.0.0.1:8080/v1/command \
   -H 'Content-Type: application/json' \
-  -d '{"text":"изключи лампата в хола"}' | python3 -m json.tool
+  -d '{"text":"изключи лампата"}' | python3 -m json.tool
 
 curl -s -X POST http://127.0.0.1:8080/v1/voice \
-  -F audio=@examples/hall-light-off.wav | python3 -m json.tool
+  -F audio=@examples/light-off.wav | python3 -m json.tool
 ```
 
 With an API key, add `-H "X-API-Key: $BGV_API_KEY"` to both.
 
-The bundled `config/commands.yaml` uses example entities (`light.light2`,
-`sensor.outside_temp`, `scene.night_light`, `scene.all_lights_on/off`). Change
-them to your entities, then reload:
+The starter `config/commands.yaml` uses placeholder entities
+(`light.living_room`, `sensor.outside_temperature`). Replace them with your own,
+then reload:
 
 ```bash
 $EDITOR config/commands.yaml
 curl -s -X POST http://127.0.0.1:8080/v1/reload \
   -H "X-API-Key: $BGV_API_KEY"
+```
+
+For a fuller real-home catalogue (hall light, night light, all-lights scenes,
+indoor/outdoor temperature), use `config/commands-example.yaml`:
+
+```bash
+# either copy it over the starter:
+cp config/commands-example.yaml config/commands.yaml
+# or keep both and select it in .env:
+echo 'BGV_COMMANDS_FILE=commands-example.yaml' >> .env
 ```
 
 ## Configuration
@@ -139,7 +154,8 @@ All settings are environment variables (prefix `BGV_`) or entries in `.env`.
 | `BGV_TTS_PROVIDER` | `gtts` | `gtts` (female, cloud) or `piper` (male, local) |
 | `BGV_TTS_LANGUAGE` | `bg` | gTTS language |
 | `BGV_TTS_TIMEOUT_S` | `5` | gTTS timeout before Piper fallback |
-| `BGV_CONFIG_DIR` | `config` | Directory containing `commands.yaml` |
+| `BGV_CONFIG_DIR` | `config` | Directory containing the command catalogue |
+| `BGV_COMMANDS_FILE` | `commands.yaml` | Catalogue file inside `BGV_CONFIG_DIR` |
 | `BGV_MODELS_DIR` | `models` | ASR/Piper models and TTS cache |
 | `BGV_LOG_LEVEL` | `INFO` | Python log level |
 
@@ -151,6 +167,10 @@ with its own `.env` and port (see [Multiple HA instances](#multiple-ha-instances
 
 ## Command catalogue (`config/commands.yaml`)
 
+`config/commands.yaml` is the minimal starter. `config/commands-example.yaml`
+contains a full real-home example; select it with
+`BGV_COMMANDS_FILE=commands-example.yaml`.
+
 ```yaml
 language: bg
 
@@ -159,17 +179,17 @@ match:
   margin: 5       # best must beat the runner-up by this much
 
 commands:
-  HallLightOff:
+  LightOff:
     speak: false
     phrases:
-      - "изключи лампата в хола"
-      - "изгаси лампата в хола"
-    hotwords: ["лампата", "хола"]
+      - "изключи лампата"
+      - "изгаси лампата"
+    hotwords: ["лампата"]
     action:
       service: light.turn_off
       target:
-        entity_id: light.light2
-      response: "Изключих лампата в хола."
+        entity_id: light.living_room   # <-- your entity
+      response: "Изключих лампата."
 ```
 
 ### Mapping modes
@@ -252,7 +272,7 @@ X-API-Key: <BGV_API_KEY>
 | `POST` | `/v1/voice/raw` | Raw WAV body (MCU friendly) |
 | `POST` | `/v1/command` | Text input, for tests and integrations |
 | `GET` | `/v1/audio/{file}` | Generated reply audio (MP3 or WAV) |
-| `POST` | `/v1/reload` | Rebuild runtime after editing `commands.yaml` |
+| `POST` | `/v1/reload` | Rebuild runtime after editing the selected catalogue |
 
 Text request:
 
@@ -306,8 +326,8 @@ docker compose up -d             # update after git pull
 
 - **Models are baked into the image**, so there is no model bind mount. Rebuild
   the image after updating `models/fetch_models.sh`.
-- `./config` is mounted read-only; edit `commands.yaml` on the host and call
-  `/v1/reload`.
+- `./config` is mounted read-only; edit `commands.yaml` (or the file named by
+  `BGV_COMMANDS_FILE`) on the host and call `/v1/reload`.
 - The TTS cache lives in the `tts-cache` volume; removing it only costs one
   re-synthesis per phrase.
 - The container runs as a non-root user and exposes `8080`.
@@ -370,8 +390,8 @@ cp docker-compose.yaml docker-compose.ha2.yaml
 docker compose -f docker-compose.ha2.yaml up -d --build
 ```
 
-Each gateway has its own `commands.yaml` only if the intents differ; otherwise
-mount the same file read-only.
+Each gateway has its own catalogue only if the intents differ; otherwise mount
+the same file read-only.
 
 ## Local development
 
@@ -391,7 +411,7 @@ Python 3.12+ is supported. `pytest -q` runs the API/matcher/audio tests with a
 fake runtime; no models, network or Home Assistant are needed.
 
 ```bash
-pytest -q          # 37 tests
+pytest -q          # 39 tests
 ```
 
 ## Latency
@@ -447,7 +467,7 @@ actions. gTTS is network-bound and dominates spoken queries; use
 ```
 app/
   main.py              FastAPI app factory, lifespan, optional API key
-  config.py            Settings + commands.yaml models
+  config.py            Settings + command-catalogue models
   asr.py               sherpa-onnx streaming ASR, hotwords
   matcher.py           normalisation, fuzzy matching, antonym guard
   ha.py                single Home Assistant REST client
@@ -456,7 +476,8 @@ app/
   runtime.py           wiring and lifecycle
   api/routes/          voice, health, admin
 config/
-  commands.yaml        your phrases and entity mapping
+  commands.yaml        starter phrases with placeholder entities
+  commands-example.yaml full real-home example (scenes, temperatures)
 examples/
   *.wav                ready-to-post Bulgarian command samples
 homeassistant/

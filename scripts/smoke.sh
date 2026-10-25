@@ -19,7 +19,7 @@ echo
 echo "== text command"
 curl -sS -X POST "${HOST}/v1/command" "${AUTH[@]}" \
   -H 'Content-Type: application/json' \
-  -d '{"text":"изключи лампата в хола"}' | python3 -m json.tool
+  -d '{"text":"изключи лампата"}' | python3 -m json.tool
 
 if [[ -n "${AUDIO}" ]]; then
   echo

@@ -1,13 +1,14 @@
-# Voice commands. Each key is an intent name.
+# Starter command catalogue. Replace the example entities with your own.
+#
+# A fuller real-home example (hall light, scenes, indoor/outdoor temperature)
+# lives in commands-example.yaml. Point BGV_COMMANDS_FILE at it to try it.
 #
 # Mapping (choose one per command):
-#   action: call a Home Assistant service directly          (self-contained)
-#   query:  read an entity and speak the rendered answer
-#   neither: call a Home Assistant intent_script by this name
+#   action:  call a Home Assistant service directly
+#   query:   read an entity and return a spoken answer (speak: true)
+#   neither: call an intent_script by the command name
 #
-# `phrases` are what you can say; add variants as you notice ASR misses.
-# `hotwords` bias the ASR toward your device words.
-# `speak: true` returns a spoken answer; actions stay text-only.
+# `phrases` are what you can say. `hotwords` bias the ASR toward device words.
 
 language: bg
 
@@ -16,114 +17,43 @@ match:
   margin: 5       # best must beat second-best by this much
 
 commands:
-  HallLightOff:
+  LightOn:
     speak: false
     phrases:
-      - "изключи лампата в хола"
-      - "изгаси лампата в хола"
-      - "изключи осветлението в хола"
+      - "включи лампата"
+      - "светни лампата"
     hotwords:
       - "лампата"
-      - "хола"
-    action:
-      service: light.turn_off
-      target:
-        entity_id: light.light2
-      response: "Изключих лампата в хола."
-
-  HallLightOn:
-    speak: false
-    phrases:
-      - "включи лампата в хола"
-      - "светни лампата в хола"
-      - "включи осветлението в хола"
-    hotwords:
-      - "лампата"
-      - "хола"
     action:
       service: light.turn_on
       target:
-        entity_id: light.light2
-      response: "Включих лампата в хола."
+        entity_id: light.living_room   # <-- your entity
+      response: "Включих лампата."
 
-  NightLight:
+  LightOff:
     speak: false
     phrases:
-      - "включи нощно осветление"
-      - "пусни нощното осветление"
-      - "нощно осветление"
-    action:
-      service: scene.turn_on
-      target:
-        entity_id: scene.night_light
-      response: "Включих нощното осветление."
-
-  AllLightsOn:
-    speak: false
-    phrases:
-      - "включи осветлението"
-      - "включи всички светлини"
-      - "включи всички лампи"
-      - "пусни всички лампи"
-    action:
-      service: scene.turn_on
-      target:
-        entity_id: scene.all_lights_on
-      response: "Включих всички светлини."
-
-  AllLightsOff:
-    speak: false
-    phrases:
-      - "изключи осветлението"
-      - "изключи всички светлини"
-      - "изключи всички лампи"
-      - "загаси всички лампи"
-    action:
-      service: scene.turn_on
-      target:
-        entity_id: scene.all_lights_off
-      response: "Изключих всички светлини."
-
-  HallTemperature:
-    speak: true
-    phrases:
-      - "каква е температурата в хола"
-      - "каква е температурата вътре"
-      - "колко градуса е в хола"
-      - "температурата в хола"
+      - "изключи лампата"
+      - "изгаси лампата"
     hotwords:
-      - "температурата"
-      - "хола"
-    query:
-      entity_id: sensor.down_temperature
-      round: 1
-      unit: "градуса"
-      unit_singular: "градус"
-      template: "В момента температурата в хола е {value} {unit}."
+      - "лампата"
+    action:
+      service: light.turn_off
+      target:
+        entity_id: light.living_room   # <-- your entity
+      response: "Изключих лампата."
 
   OutsideTemperature:
     speak: true
     phrases:
       - "каква е температурата навън"
-      - "каква е температурата отвън"
       - "колко градуса е навън"
-      - "каква е температурата вън"
     hotwords:
       - "температурата"
       - "навън"
     query:
-      entity_id: sensor.outside_temp
+      entity_id: sensor.outside_temperature   # <-- your entity
       round: 0
       unit: "градуса"
       unit_singular: "градус"
       template: "В момента температурата навън е {value} {unit}."
-
-  # Intent-script mode (no action/query): HA must define an intent_script
-  # entry with this exact name. Example:
-  #
-  # CorridorLightOn:
-  #   speak: false
-  #   phrases:
-  #     - "светни лампата в коридора"
-  #     - "включи лампата в коридора"
-  #   hotwords: ["лампата", "коридора"]

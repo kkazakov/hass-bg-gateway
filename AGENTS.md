@@ -19,7 +19,7 @@ Piper fallback).
 ```
 app/
   main.py            app factory, lifespan, router auth dependency
-  config.py          Settings + commands.yaml models
+  config.py          Settings + command-catalogue models
   asr.py             sherpa-onnx streaming ASR, hotwords, thread lock
   matcher.py         normalise, fuzzy matching, verb/antonym guard
   ha.py              single HA REST client (intent/service/state)
@@ -28,7 +28,8 @@ app/
   runtime.py         wiring + lifecycle + single HA client
   api/deps.py        get_runtime, require_api_key
   api/routes/        voice.py, health.py, admin.py
-config/commands.yaml command catalogue (edit this first)
+config/commands.yaml starter catalogue (placeholder entities)
+config/commands-example.yaml full real-home example (BGV_COMMANDS_FILE)
 models/fetch_models.sh downloads ASR + Piper, builds bpe.vocab
 tests/               API/matcher/audio/reply tests with a fake runtime
 ```
@@ -54,8 +55,8 @@ Docker: `docker compose up -d --build`; models are baked into the image.
   route is intentionally protected too.
 - One HA per process. Do not reintroduce an `instances` map; separate homes get
   separate containers.
-- `commands.yaml` is the extension surface: prefer adding a command over adding
-  code.
+- `commands.yaml` is the extension surface (or the file selected by
+  `BGV_COMMANDS_FILE`); prefer adding a command over adding code.
 - Keep query answers Bulgarian; decimal comma comes from `reply.format_value`.
 - Tests must not require models, network or HA. Use `create_app(builder=...)`
   with the fake runtime in `tests/test_api.py`.

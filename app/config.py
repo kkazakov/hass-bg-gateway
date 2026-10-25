@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     config_dir: Path = Path("config")
     models_dir: Path = Path("models")
 
+    # Which catalogue inside config_dir to load. Keep commands.yaml as the
+    # starter; commands-example.yaml is a richer real-home example.
+    commands_file: str = "commands.yaml"
+
     # --- Home Assistant (exactly one per gateway) -------------------------
     ha_url: str = "http://homeassistant.local:8123"
     ha_token: str = ""
@@ -52,7 +56,7 @@ class Settings(BaseSettings):
 
     @property
     def commands_path(self) -> Path:
-        return self.config_dir / "commands.yaml"
+        return self.config_dir / self.commands_file
 
 
 class MatchSettings(BaseModel):
