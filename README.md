@@ -498,9 +498,10 @@ docker-compose.yaml
 ## Android client
 
 A push-to-talk Android app lives in a separate repository
-(`hass-bulgarian-voice`): hold the mic, release to send, multiple gateway URLs.
-It does **not** send `X-API-Key` yet, so keep the gateway on the LAN without a
-key, or add the header in the app before exposing it.
+(`hass-bulgarian-voice`): hold the mic, release to send, multiple gateway URLs,
+and an optional per-gateway `X-API-Key`. Paste the gateway's `BGV_API_KEY` into
+the app's gateway entry to use a keyed gateway; leave it empty when auth is
+disabled.
 
 ## Limits / roadmap
 
