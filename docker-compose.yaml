@@ -5,10 +5,11 @@ services:
     container_name: hass-bg-gateway
     env_file:
       - .env
-    # Loopback by default. Put Caddy/nginx in front for HTTPS, or change to
-    # "8125:8125" if the gateway is only reachable on your LAN/tailnet.
+    # Published on every interface (LAN/tailnet). Set BGV_API_KEY before
+    # exposing this beyond a trusted network. If a reverse proxy on this host is
+    # the only entry point, bind "127.0.0.1:8125:8125" instead.
     ports:
-      - "127.0.0.1:8125:8125"
+      - "8125:8125"
     volumes:
       - ./config:/app/config:ro
       - tts-cache:/app/models/tts-cache

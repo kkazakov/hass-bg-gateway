@@ -334,27 +334,29 @@ docker compose up -d             # update after git pull
 
 ### Ports and LAN/tailnet access
 
-The default publish is **loopback only**:
+The default publish is **all interfaces**:
 
 ```yaml
 ports:
-  - "127.0.0.1:8125:8125"
+  - "8125:8125"
 ```
 
-For direct access from a phone on the same LAN/tailnet, change it to:
+The gateway is then reachable at `<host-ip>:8125` from the LAN and from
+Tailscale. To restrict it:
 
 ```yaml
 ports:
-  - "8125:8125"        # LAN
-  # or: "100.x.y.z:8125:8125"  # Tailscale IP only
+  - "127.0.0.1:8125:8125"       # loopback only (Caddy/nginx on this host)
+  # or: "100.x.y.z:8125:8125"   # a single Tailscale address
 ```
 
-Keep the API key enabled if more than one trusted device can reach it.
+Set `BGV_API_KEY` before exposing the port beyond a trusted network.
 
 ### HTTPS with Caddy
 
-Put a reverse proxy in front and keep the container on loopback. Caddy obtains
-and renews certificates automatically:
+Put a reverse proxy in front. If Caddy runs on the same host, bind the gateway to
+loopback (`127.0.0.1:8125:8125`) so 8125 itself is not reachable from outside.
+Caddy obtains and renews certificates automatically:
 
 ```caddyfile
 gateway.example.com {
@@ -386,7 +388,7 @@ cp docker-compose.yaml docker-compose.ha2.yaml
 # edit docker-compose.ha2.yaml:
 #   container_name: hass-bg-gateway-ha2
 #   env_file: .env.ha2
-#   ports: "127.0.0.1:8126:8125"
+#   ports: "8126:8125"
 docker compose -f docker-compose.ha2.yaml up -d --build
 ```
 
@@ -437,8 +439,10 @@ actions. gTTS is network-bound and dominates spoken queries; use
 
 - **API key**: constant-time comparison, applied to every `/v1` route. Empty by
   default for a trusted LAN.
-- **Bind loopback** in compose and terminate HTTPS at Caddy/nginx. Do not expose
-  `uvicorn` directly to the internet.
+- **Network exposure**: compose publishes `8125` on all interfaces. Set
+  `BGV_API_KEY`, use a firewall, or bind `127.0.0.1:8125:8125` when a local
+  reverse proxy is the only entry point. Do not expose `uvicorn` directly to the
+  internet.
 - **HA token**: full access to Home Assistant. Keep `.env` mode `600`, never
   commit it; rotate the token if it leaks.
 - **No cloud ASR/LLM**: audio never leaves the machine. With the default gTTS
