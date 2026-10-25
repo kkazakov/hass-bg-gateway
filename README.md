@@ -321,7 +321,7 @@ docker compose up -d --build     # first build downloads models
 docker compose logs -f gateway
 docker compose restart gateway
 docker compose down              # keeps the tts-cache volume
-docker compose up -d             # update after git pull
+docker compose up -d --build     # update after git pull (picks up Dockerfile/CMD changes)
 ```
 
 - **Models are baked into the image**, so there is no model bind mount. Rebuild
@@ -457,6 +457,7 @@ actions. gTTS is network-bound and dominates spoken queries; use
 | `BGV_HA_TOKEN is empty` at startup | Fill `BGV_HA_TOKEN` in `.env`; recreate the container |
 | `401 invalid or missing X-API-Key` | Send `X-API-Key` on **every** `/v1` call, including health/audio |
 | `502` from the gateway | HA unreachable or rejected the call; check `docker compose logs` |
+| `8125` resets the connection / health is `starting` | The image is stale (still runs `uvicorn` on 8080). Rebuild: `docker compose up -d --build --force-recreate` |
 | HA returns `400` for a service | Target fields must be top-level; the client already flattens them |
 | `422` on `/v1/voice` | Audio must be 16 kHz mono PCM16 WAV |
 | `no_match` for a phrase you said | Add the phrase/hotwords, check `/v1/commands`, reload |
