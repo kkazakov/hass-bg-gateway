@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from ...audio import AudioError, decode_wav, pad
 from ...ha import HaError
+from ...reply import render_query
 from ...runtime import Runtime
 from ..deps import get_runtime
 
@@ -113,15 +114,25 @@ async def _run_pipeline(
     command = runtime.command(match.intent)
     t0 = time.perf_counter()
     try:
-        result = await client.handle_intent(match.intent)
+        if command.action is not None:
+            await client.call_service(
+                command.action.service,
+                command.action.target,
+                command.action.data,
+            )
+            text = command.action.response or "Готово."
+        elif command.query is not None:
+            state = await client.get_state(command.query.entity_id)
+            text = render_query(command.query, state)
+        else:
+            result = await client.handle_intent(match.intent)
+            text = result["text"] or "Готово."
     except HaError as exc:
         log.error("HA error: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc
     timings.ha_ms = round((time.perf_counter() - t0) * 1000, 2)
-
-    text = result["text"] or "Готово."
     should_speak = command.speak if speak == "auto" else speak == "true"
 
     audio_url = None
@@ -285,5 +296,9 @@ async def commands(request: Request) -> dict:
     runtime = get_runtime(request)
     entries = runtime.matcher.describe()
     for entry in entries:
-        entry["speak"] = runtime.command(entry["intent"]).speak
+        command = runtime.command(entry["intent"])
+        entry["speak"] = command.speak
+        entry["mode"] = (
+            "action" if command.action else "query" if command.query else "intent"
+        )
     return {"language": runtime.commands.language, "commands": entries}

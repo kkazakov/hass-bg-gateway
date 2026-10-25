@@ -67,6 +67,59 @@ class HaClient:
             "data": payload.get("data"),
         }
 
+    async def call_service(
+        self,
+        service: str,
+        target: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call ``domain.service`` (e.g. ``light.turn_off``) directly."""
+        if "." not in service:
+            raise HaError(f"invalid service {service!r}, expected domain.service")
+        # The REST API expects target fields (entity_id/area_id/...) flattened
+        # into the service data. A nested {"target": ...} is rejected with 400
+        # on HA 2026.10.
+        payload: dict[str, Any] = {}
+        if target:
+            payload.update(target)
+        if data:
+            payload.update(data)
+        try:
+            response = await self._client.post(
+                f"/api/services/{service.replace('.', '/', 1)}", json=payload
+            )
+        except httpx.HTTPError as exc:
+            raise HaError(f"{self.name}: request failed: {exc}") from exc
+
+        if response.status_code == 401:
+            raise HaError(f"{self.name}: invalid or expired token")
+        if response.status_code >= 400:
+            raise HaError(
+                f"{self.name}: HTTP {response.status_code}: {response.text[:300]}"
+            )
+        try:
+            changed = response.json()
+        except ValueError:
+            changed = []
+        return {"changed": changed if isinstance(changed, list) else []}
+
+    async def get_state(self, entity_id: str) -> dict[str, Any]:
+        """Return the current state object for ``entity_id``."""
+        try:
+            response = await self._client.get(f"/api/states/{entity_id}")
+        except httpx.HTTPError as exc:
+            raise HaError(f"{self.name}: request failed: {exc}") from exc
+
+        if response.status_code == 404:
+            raise HaError(f"{self.name}: entity {entity_id} not found")
+        if response.status_code == 401:
+            raise HaError(f"{self.name}: invalid or expired token")
+        if response.status_code >= 400:
+            raise HaError(
+                f"{self.name}: HTTP {response.status_code}: {response.text[:300]}"
+            )
+        return response.json()
+
     async def health(self) -> bool:
         try:
             response = await self._client.get("/api/")

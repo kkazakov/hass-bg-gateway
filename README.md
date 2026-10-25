@@ -2,7 +2,14 @@
 
 Bulgarian voice control for Home Assistant with a **small, fixed command set**.
 Speak a configured phrase → the gateway transcribes it, matches it to a command,
-and calls a Home Assistant `intent_script`. No cloud, no LLM, no general NLU.
+and acts on Home Assistant. No cloud, no LLM, no general NLU.
+
+Commands can be mapped in two ways, per command:
+
+* **self-contained** — `action:` calls a service directly, `query:` reads an entity;
+* **HA-side** — no `action`/`query`, the gateway calls an `intent_script` by name.
+
+Tested against Home Assistant 2026.10.1 with `light.light2` and `sensor.outside_temp`.
 
 ```
 mic → 16 kHz WAV → sherpa-onnx ASR (Bulgarian, int8) → fuzzy phrase match
@@ -22,13 +29,13 @@ budget. TTS (only for `speak: true`) is ~76–78 ms.
 - **The command list is configuration, not inference.** You write ~10 intents in
   Home Assistant and 2–4 Bulgarian phrases per intent in `config/commands.yaml`.
   Adding a command is three edits and a reload.
-- **The gateway matches phrases, Home Assistant owns devices.** HA's
-  `intent_script` holds the entity ids and the reply text; the gateway only maps
-  sound → intent name.
-- **Intent by name, not free text.** `POST /api/intent/handle` is used because the
-  conversation response does not include the matched intent name — the gateway
-  could not otherwise know whether a reply is an action (text only) or a query
-  (spoken).
+- **The gateway matches phrases; the mapping stays declarative.** Either
+  `commands.yaml` names the service/entity directly, or Home Assistant's
+  `intent_script` does, and the gateway calls the intent by name.
+- **Intent by name, not free text.** When `intent_script` mode is used,
+  `POST /api/intent/handle` is called because the conversation response does not
+  include the matched intent name — the gateway could not otherwise tell an
+  action (text only) from a query (spoken).
 - **Fuzzy matching absorbs ASR slips.** The model hears `ломпата` for `лампата`;
   RapidFuzz over the configured phrases still picks the right command (score
   ≥88, margin ≥5, otherwise "не разбрах").
@@ -53,9 +60,10 @@ cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-Add the two entries from [`homeassistant/intent_script.yaml`](homeassistant/intent_script.yaml)
-to your HA `configuration.yaml`, point them at your entities, and restart HA (or
-reload `intent_script`).
+If you want **HA-side mapping**, add entries from
+[`homeassistant/intent_script.yaml`](homeassistant/intent_script.yaml) to your HA
+`configuration.yaml` and reload `intent_script`. If you use `action:`/`query:` in
+`commands.yaml` (the default in this repo), **no HA configuration is needed**.
 
 ### First check
 
@@ -89,16 +97,44 @@ match:
   margin: 5          # best must beat second-best by this much
 
 commands:
-  HallLightOff:
-    speak: false     # actions: text reply only
+  HallLightOff:                 # action: call a service directly
+    speak: false
     phrases:
       - "изключи лампата в хола"
       - "изгаси лампата в хола"
-    hotwords: ["лампата", "хола"]   # bias the ASR toward these words
+    hotwords: ["лампата", "хола"]
+    action:
+      service: light.turn_off
+      target: { entity_id: light.light2 }
+      response: "Изключих лампата в хола."
+
+  OutsideTemperature:           # query: read an entity, speak the answer
+    speak: true
+    phrases:
+      - "каква е температурата навън"
+      - "колко градуса е навън"
+    hotwords: ["температурата", "навън"]
+    query:
+      entity_id: sensor.outside_temp
+      round: 0
+      unit: "градуса"
+      unit_singular: "градус"
+      template: "В момента температурата навън е {value} {unit}."
+
+  CorridorLightOn:              # intent mode: no action/query
+    speak: false
+    phrases: ["светни лампата в коридора"]
 ```
 
-`speak: true` is for queries (sensor values). The reply text comes from HA and is
-synthesized with Piper.
+Mapping modes:
+
+| Fields | What runs | Notes |
+|---|---|---|
+| `action:` | `POST /api/services/<domain>/<service>` | `target` fields are sent top-level (HA 2026.10 rejects a nested `target`) |
+| `query:` | `GET /api/states/<entity>` → template | `{value}`, `{unit}`, `{name}`, `{state}`; Bulgarian decimal comma |
+| neither | `POST /api/intent/handle` by name | requires an `intent_script` entry in HA |
+
+`speak: true` is only for queries; action replies are text-only.
 
 ### `config/instances.yaml`
 
@@ -196,11 +232,24 @@ without the 130 MB of models.
 | Phrase match (30–40 phrases) | 0.1–0.2 ms |
 | HA `intent/handle` (LAN) | 15–60 ms |
 | Piper synthesis (1.6 s reply) | 78 ms |
-| **Total, action** | **~90–110 ms** |
-| **Total, spoken query (to audio)** | **~180–250 ms** |
+| **Total, action** | **~90–120 ms** (measured 121 ms with real HA) |
+| **Total, spoken query (to audio)** | **~90 ms cached / ~270 ms first synthesis** |
 
 Numbers are from a fast x86 CPU (AVX-512 VNNI). Expect 2–4× on an N100/Pi 5,
 which still fits 500 ms.
+
+## Verified against a real installation
+
+Run against Home Assistant 2026.10.1 (`100.101.102.12:8123`):
+
+```
+"изключи лампата в хола"      → light.light2 on → off, 121 ms, text reply
+"каква е температурата навън" → "В момента температурата навън е 11 градуса."
+                                 spoken WAV, 268 ms first / 93 ms cached
+```
+
+The spoken answer comes from `sensor.outside_temp` (10.75 °C → rounded 11) and is
+synthesized locally; the action path returns text only.
 
 ## Limitations
 

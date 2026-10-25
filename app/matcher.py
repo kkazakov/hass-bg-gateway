@@ -67,6 +67,7 @@ class Matcher:
         self._intents: list[str] = []
         self._choices: list[str] = []
         self._original: dict[str, str] = {}
+        self._exact: dict[str, tuple[str, str]] = {}
         for intent, command in commands.items():
             for phrase in command.phrases:
                 key = normalise(phrase)
@@ -75,11 +76,19 @@ class Matcher:
                 self._intents.append(intent)
                 self._choices.append(key)
                 self._original[key] = phrase
+                self._exact.setdefault(key, (intent, phrase))
 
     def match(self, transcript: str) -> Match:
         query = normalise(transcript)
         if not query:
             return Match(None, None, 0.0, 0.0, transcript, "empty transcript")
+
+        # An exact configured phrase is unambiguous by definition; near-identical
+        # variants ("навън" / "отвън") would otherwise trip the margin rule.
+        exact = self._exact.get(query)
+        if exact is not None:
+            intent, phrase = exact
+            return Match(intent, phrase, 100.0, 0.0, transcript)
 
         results = process.extract(
             query, self._choices, scorer=fuzz.WRatio, limit=2

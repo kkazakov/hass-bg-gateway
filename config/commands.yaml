@@ -1,6 +1,13 @@
-# Voice commands. Each key is a Home Assistant intent_script entry.
+# Voice commands. Each key is an intent name.
+#
+# Mapping (choose one per command):
+#   action: call a Home Assistant service directly          (self-contained)
+#   query:  read an entity and speak the rendered answer
+#   neither: call a Home Assistant intent_script by this name
+#
 # `phrases` are what you can say; add variants as you notice ASR misses.
-# `speak: true` returns a spoken answer (queries only). Actions stay text-only.
+# `hotwords` bias the ASR toward your device words.
+# `speak: true` returns a spoken answer; actions stay text-only.
 
 language: bg
 
@@ -18,26 +25,35 @@ commands:
     hotwords:
       - "лампата"
       - "хола"
+    action:
+      service: light.turn_off
+      target:
+        entity_id: light.light2
+      response: "Изключих лампата в хола."
 
-  CorridorLightOn:
-    speak: false
+  OutsideTemperature:
+    speak: true
     phrases:
-      - "светни лампата в коридора"
-      - "включи лампата в коридора"
-      - "светни осветлението в коридора"
+      - "каква е температурата навън"
+      - "каква е температурата отвън"
+      - "колко градуса е навън"
+      - "каква е температурата вън"
     hotwords:
-      - "лампата"
-      - "коридора"
+      - "температурата"
+      - "навън"
+    query:
+      entity_id: sensor.outside_temp
+      round: 0
+      unit: "градуса"
+      unit_singular: "градус"
+      template: "В момента температурата навън е {value} {unit}."
 
-  # Example of a spoken query. Uncomment together with the matching
-  # intent_script entry in homeassistant/intent_script.yaml.
+  # Intent-script mode (no action/query): HA must define an intent_script
+  # entry with this exact name. Example:
   #
-  # OutsideTemperature:
-  #   speak: true
+  # CorridorLightOn:
+  #   speak: false
   #   phrases:
-  #     - "каква е температурата отвън"
-  #     - "колко градуса е навън"
-  #     - "каква е температурата навън"
-  #   hotwords:
-  #     - "температурата"
-  #     - "отвън"
+  #     - "светни лампата в коридора"
+  #     - "включи лампата в коридора"
+  #   hotwords: ["лампата", "коридора"]

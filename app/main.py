@@ -6,6 +6,7 @@ import logging
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
 
 from .api.deps import require_api_key
@@ -25,6 +26,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # .env holds HA_*_TOKEN values that instances.yaml references by name;
+        # pydantic-settings reads BGV_* from .env but does not export it.
+        load_dotenv(override=False)
         current = settings or Settings()
         logging.basicConfig(
             level=getattr(logging, current.log_level.upper(), logging.INFO),

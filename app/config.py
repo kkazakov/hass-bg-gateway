@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -56,12 +57,47 @@ class MatchSettings(BaseModel):
         return self
 
 
+class ActionConfig(BaseModel):
+    """Execute a Home Assistant service directly (self-contained mapping)."""
+
+    service: str
+    target: dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
+    response: str = "Готово."
+
+
+class QueryConfig(BaseModel):
+    """Read an entity state and render a Bulgarian sentence."""
+
+    entity_id: str
+    template: str = "В момента {name} е {value} {unit}."
+    round: int | None = 1
+    unit: str | None = None
+    unit_singular: str | None = None
+
+
 class CommandConfig(BaseModel):
-    """One voice command: phrases that trigger it and whether to speak the reply."""
+    """One voice command.
+
+    Mapping is either:
+    * ``action`` — call an HA service directly,
+    * ``query``  — read an entity and speak the rendered answer,
+    * neither    — call an HA ``intent_script`` by the command name.
+    """
 
     speak: bool = False
     phrases: list[str] = Field(min_length=1)
     hotwords: list[str] = Field(default_factory=list)
+    action: ActionConfig | None = None
+    query: QueryConfig | None = None
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CommandConfig":
+        if self.action and self.query:
+            raise ValueError("a command cannot define both action and query")
+        if self.query and not self.speak:
+            raise ValueError("query commands must set speak: true")
+        return self
 
 
 class CommandsFile(BaseModel):

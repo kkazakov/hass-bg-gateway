@@ -10,7 +10,8 @@ a **fixed, manually mapped command set**:
 1. receives 16 kHz mono PCM16 WAV (or text, for testing),
 2. transcribes Bulgarian speech with a local streaming sherpa-onnx model,
 3. fuzzy-matches the transcript against `config/commands.yaml`,
-4. calls Home Assistant `POST /api/intent/handle` with the intent **name**,
+4. executes the command: a service call, an entity read, or
+   `POST /api/intent/handle` with the intent **name**,
 5. returns the `intent_script` reply text, plus Piper audio for `speak: true`.
 
 No LLM, no cloud, no general NLU. Home Assistant owns device mapping and reply
@@ -25,7 +26,8 @@ app/
   asr.py         sherpa-onnx OnlineRecognizer, hotwords, thread lock
   audio.py       strict WAV decode + silence padding
   matcher.py     normalise + RapidFuzz WRatio matching
-  ha.py          HA intent client (httpx)
+  ha.py          HA client: intent, service call, state read (httpx)
+  reply.py       Bulgarian query rendering (value/unit/plural)
   tts.py         Piper voice (optional, never used for actions)
   runtime.py     Runtime dataclass + build_runtime
   api/deps.py    runtime lookup + API key auth
@@ -80,6 +82,15 @@ with a fake ASR/HA response.
 - **Reload rebuilds the ASR recognizer** (~1 s) so hotwords change. In-flight
   requests finish on the old runtime.
 - **Intent names must match exactly** between `config/commands.yaml` and HA's
-  `intent_script`.
+  `intent_script` (only relevant in intent mode).
+- **HA 2026.10 rejects a nested `target` on REST service calls** (400). Target
+  fields (`entity_id`, `area_id`, …) must be top-level in the JSON body; the
+  client flattens them.
+- **Exact phrases bypass the margin rule.** A transcript that equals a configured
+  phrase wins even if a near-identical variant ("навън"/"отвън") scores close;
+  otherwise those variants would always be "ambiguous".
+- **`.env` is loaded with python-dotenv** because `instances.yaml` references
+  tokens by environment-variable name, and pydantic-settings does not export
+  `.env` values to `os.environ`.
 - **Fuzzy match rejects ambiguity by design** (margin < 5). If a command stops
   matching after you add a similar phrase, that is why.

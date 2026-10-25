@@ -19,10 +19,26 @@ COMMANDS = {
         "HallLightOff": {
             "speak": False,
             "phrases": ["изключи лампата в хола", "изгаси лампата в хола"],
+            "action": {
+                "service": "light.turn_off",
+                "target": {"entity_id": "light.hall"},
+                "response": "Изключих лампата в хола.",
+            },
         },
         "OutsideTemperature": {
             "speak": True,
-            "phrases": ["каква е температурата отвън"],
+            "phrases": ["каква е температурата навън"],
+            "query": {
+                "entity_id": "sensor.outside_temp",
+                "round": 0,
+                "unit": "градуса",
+                "unit_singular": "градус",
+                "template": "В момента температурата навън е {value} {unit}.",
+            },
+        },
+        "MovieMode": {
+            "speak": False,
+            "phrases": ["пусни филм"],
         },
     },
 }
@@ -66,13 +82,33 @@ class FakeTts:
 
 
 class FakeHa:
-    def __init__(self, text: str = "Изключих лампата в хола.") -> None:
-        self.text = text
+    def __init__(self, intent_text: str = "Готово.") -> None:
+        self.intent_text = intent_text
         self.intents: list[str] = []
+        self.services: list[tuple[str, dict]] = []
 
     async def handle_intent(self, intent: str) -> dict:
         self.intents.append(intent)
-        return {"text": self.text, "response_type": "action_done", "data": {}}
+        return {"text": self.intent_text, "response_type": "action_done", "data": {}}
+
+    async def call_service(
+        self,
+        service: str,
+        target: dict | None = None,
+        data: dict | None = None,
+    ) -> dict:
+        self.services.append((service, {"target": target or {}, "data": data or {}}))
+        return {"changed": []}
+
+    async def get_state(self, entity_id: str) -> dict:
+        return {
+            "entity_id": entity_id,
+            "state": "10.7540130615234",
+            "attributes": {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Outside Temperature Outside",
+            },
+        }
 
     async def health(self) -> bool:
         return True
@@ -84,7 +120,6 @@ class FakeHa:
 def build_runtime(
     *,
     transcript: str = "изключи лампата в хола",
-    ha_text: str = "Изключих лампата в хола.",
     tts_ready: bool = True,
 ) -> Runtime:
     commands = CommandsFile.model_validate(COMMANDS)
@@ -101,7 +136,7 @@ def build_runtime(
         matcher=Matcher(commands.commands),
         asr=FakeAsr(transcript),
         tts=FakeTts(tts_ready),
-        ha={"home": FakeHa(ha_text)},
+        ha={"home": FakeHa()},
         default_instance="home",
     )
 
@@ -115,7 +150,7 @@ def client_for(runtime: Runtime, *, api_key: str | None = None) -> TestClient:
     return TestClient(create_app(builder=builder, settings=settings))
 
 
-def test_action_returns_text_only() -> None:
+def test_action_calls_service_and_returns_text_only() -> None:
     runtime = build_runtime()
     with client_for(runtime) as client:
         response = client.post("/v1/command", json={"text": "изключи лампата в хола"})
@@ -126,19 +161,22 @@ def test_action_returns_text_only() -> None:
     assert body["audio_url"] is None
     assert body["matched"]["intent"] == "HallLightOff"
     assert body["text"] == "Изключих лампата в хола."
-    assert runtime.ha["home"].intents == ["HallLightOff"]
+    service, payload = runtime.ha["home"].services[0]
+    assert service == "light.turn_off"
+    assert payload["target"] == {"entity_id": "light.hall"}
 
 
-def test_speak_command_returns_audio() -> None:
-    runtime = build_runtime(ha_text="В момента температурата навън е 11 градуса.")
+def test_query_reads_state_and_returns_audio() -> None:
+    runtime = build_runtime()
     with client_for(runtime) as client:
         response = client.post(
-            "/v1/command", json={"text": "каква е температурата отвън"}
+            "/v1/command", json={"text": "каква е температурата навън"}
         )
         assert response.status_code == 200
         body = response.json()
         assert body["kind"] == "query"
         assert body["speak"] is True
+        assert body["text"] == "В момента температурата навън е 11 градуса."
         assert body["audio_url"]
 
         audio = client.get(body["audio_url"])
@@ -150,17 +188,24 @@ def test_speak_command_returns_audio() -> None:
 def test_speak_can_be_overridden_off() -> None:
     runtime = build_runtime()
     with client_for(runtime) as client:
-        response = client.post(
+        body = client.post(
             "/v1/command",
-            json={"text": "каква е температурата отвън", "speak": "false"},
-        )
-    body = response.json()
-    assert body["kind"] == "query"
+            json={"text": "каква е температурата навън", "speak": "false"},
+        ).json()
     assert body["speak"] is False
     assert body["audio_url"] is None
 
 
-def test_no_match_does_not_call_home_assistant() -> None:
+def test_intent_mode_still_works() -> None:
+    runtime = build_runtime()
+    with client_for(runtime) as client:
+        body = client.post("/v1/command", json={"text": "пусни филм"}).json()
+    assert body["kind"] == "action"
+    assert body["matched"]["intent"] == "MovieMode"
+    assert runtime.ha["home"].intents == ["MovieMode"]
+
+
+def test_no_match_does_not_touch_home_assistant() -> None:
     runtime = build_runtime()
     with client_for(runtime) as client:
         response = client.post("/v1/command", json={"text": "пусни музика"})
@@ -168,6 +213,7 @@ def test_no_match_does_not_call_home_assistant() -> None:
     assert response.status_code == 200
     assert body["kind"] == "no_match"
     assert body["text"] == "Не разбрах. Повторете, моля."
+    assert runtime.ha["home"].services == []
     assert runtime.ha["home"].intents == []
 
 
@@ -210,7 +256,12 @@ def test_rejects_wrong_audio_format() -> None:
 def test_api_key_is_enforced() -> None:
     runtime = build_runtime()
     with client_for(runtime, api_key="secret") as client:
-        assert client.post("/v1/command", json={"text": "изключи лампата в хола"}).status_code == 401
+        assert (
+            client.post(
+                "/v1/command", json={"text": "изключи лампата в хола"}
+            ).status_code
+            == 401
+        )
         ok = client.post(
             "/v1/command",
             json={"text": "изключи лампата в хола"},
@@ -228,8 +279,10 @@ def test_health_and_commands() -> None:
     assert health["asr"]["ready"] is True
     assert health["instances"]["home"] is True
     assert commands["language"] == "bg"
-    names = {entry["intent"] for entry in commands["commands"]}
-    assert names == {"HallLightOff", "OutsideTemperature"}
+    by_intent = {entry["intent"]: entry for entry in commands["commands"]}
+    assert by_intent["HallLightOff"]["mode"] == "action"
+    assert by_intent["OutsideTemperature"]["mode"] == "query"
+    assert by_intent["MovieMode"]["mode"] == "intent"
 
 
 def test_unknown_instance_is_404() -> None:

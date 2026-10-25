@@ -57,6 +57,21 @@ def test_unrelated_text_is_rejected() -> None:
     assert match.reason is not None
 
 
+def test_exact_phrase_beats_near_identical_variant() -> None:
+    matcher = Matcher(
+        {
+            "A": CommandConfig(phrases=["каква е температурата навън"]),
+            "B": CommandConfig(phrases=["каква е температурата отвън"]),
+        },
+        threshold=88,
+        margin=5,
+    )
+    match = matcher.match("каква е температурата навън")
+    assert match.ok
+    assert match.intent == "A"
+    assert match.score == pytest.approx(100.0)
+
+
 def test_ambiguous_input_is_rejected() -> None:
     matcher = Matcher(
         {
