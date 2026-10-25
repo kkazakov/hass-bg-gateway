@@ -1,101 +1,79 @@
-# AGENTS.md — hass-bulgarian-commands
+# AGENTS.md — hass-bg-gateway
 
-Guidelines for agentic coding agents (and humans) working in this repo.
+Guidelines for agentic coding agents working in this repository.
 
-## Project Overview
+## Project overview
 
-A small FastAPI service that gives Home Assistant Bulgarian voice commands with
-a **fixed, manually mapped command set**:
+A FastAPI gateway that maps Bulgarian speech (offline sherpa-onnx ASR) to a
+small, declarative command catalogue and executes it against **one** Home
+Assistant instance. No LLM, no cloud ASR, no per-request free-text inference.
+Actions reply with text; `speak: true` queries also return audio (gTTS female,
+Piper fallback).
 
-1. receives 16 kHz mono PCM16 WAV (or text, for testing),
-2. transcribes Bulgarian speech with a local streaming sherpa-onnx model,
-3. fuzzy-matches the transcript against `config/commands.yaml`,
-4. executes the command: a service call, an entity read, or
-   `POST /api/intent/handle` with the intent **name**,
-5. returns the reply text, plus audio for `speak: true` (female gTTS by default,
-   local Piper fallback).
+- Python 3.12+, FastAPI, httpx, sherpa-onnx 2.0.0, RapidFuzz, pydantic-settings
+- Optional `X-API-Key` on all `/v1` routes (`BGV_API_KEY`, empty = disabled)
+- One gateway = one HA (`BGV_HA_URL` / `BGV_HA_TOKEN`)
 
-No LLM, no cloud ASR, no general NLU. Home Assistant owns device mapping and reply
-text; this service owns speech and phrase matching.
-
-## Directory Structure
+## Directory structure
 
 ```
 app/
-  main.py        FastAPI factory; builder/settings injectable for tests
-  config.py      pydantic-settings + YAML models (commands, instances)
-  asr.py         sherpa-onnx OnlineRecognizer, hotwords, thread lock
-  audio.py       strict WAV decode + silence padding
-  matcher.py     normalise + RapidFuzz WRatio matching
-  ha.py          HA client: intent, service call, state read (httpx)
-  reply.py       Bulgarian query rendering (value/unit/plural)
-  tts.py         gTTS female voice + Piper fallback (never used for actions)
-  runtime.py     Runtime dataclass + build_runtime
-  api/deps.py    runtime lookup + API key auth
-  api/routes/    voice.py, health.py, admin.py
-config/          commands.yaml, instances.example.yaml
-homeassistant/   intent_script.yaml (copy into HA)
-models/          fetch_models.sh, downloaded models (gitignored)
-tests/           matcher, audio, API (fake runtime; no models needed)
-scripts/         make_test_wav.py, smoke.sh
+  main.py            app factory, lifespan, router auth dependency
+  config.py          Settings + commands.yaml models
+  asr.py             sherpa-onnx streaming ASR, hotwords, thread lock
+  matcher.py         normalise, fuzzy matching, verb/antonym guard
+  ha.py              single HA REST client (intent/service/state)
+  reply.py           query template rendering (units, decimal comma)
+  tts.py             gTTS + Piper fallback, disk cache
+  runtime.py         wiring + lifecycle + single HA client
+  api/deps.py        get_runtime, require_api_key
+  api/routes/        voice.py, health.py, admin.py
+config/commands.yaml command catalogue (edit this first)
+models/fetch_models.sh downloads ASR + Piper, builds bpe.vocab
+tests/               API/matcher/audio/reply tests with a fake runtime
 ```
 
 ## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 ./models/fetch_models.sh
-cp config/instances.example.yaml config/instances.yaml
-cp .env.example .env     # set HA_*_TOKEN and BGV_API_KEY
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+cp .env.example .env    # BGV_HA_URL, BGV_HA_TOKEN
+uvicorn app.main:app --host 127.0.0.1 --port 8080
+pytest -q
 ```
 
-## Testing
-
-```bash
-pytest
-```
-
-Tests must not require models or a network. Use the fake runtime pattern from
-`tests/test_api.py` (`create_app(builder=...)`). If you add a route, add a test
-with a fake ASR/HA response.
+Docker: `docker compose up -d --build`; models are baked into the image.
 
 ## Conventions
 
-- Python 3.12+, type hints everywhere, `from __future__ import annotations`.
-- Async for I/O (HA client, routes); CPU work goes through `asyncio.to_thread`.
-- No secrets in YAML: use `token_env` and `.env` (gitignored).
-- Keep the action path text-only. Speech is only for commands with `speak: true`.
-- Log transcript, intent, score and timings; **never log audio**.
-- Bulgarian strings stay in UTF-8 in YAML and Jinja templates; do not transliterate.
+- Keep the request path free of LLMs and network calls except Home Assistant
+  and (optional) gTTS.
+- All API routes under `/v1` must stay behind `require_api_key`; the health
+  route is intentionally protected too.
+- One HA per process. Do not reintroduce an `instances` map; separate homes get
+  separate containers.
+- `commands.yaml` is the extension surface: prefer adding a command over adding
+  code.
+- Keep query answers Bulgarian; decimal comma comes from `reply.format_value`.
+- Tests must not require models, network or HA. Use `create_app(builder=...)`
+  with the fake runtime in `tests/test_api.py`.
 
 ## Gotchas
 
-- **ASR is not thread-safe.** `AsrEngine.transcribe` holds a lock. Do not call the
-  recognizer concurrently from new code paths without going through it.
-- **Hotwords need `bpe.vocab`** (generated by `fetch_models.sh` from `bpe.model`).
-  Without it, the engine logs a warning and falls back to greedy decoding.
-- **Audio is strict 16 kHz mono PCM16.** Clients resample; the server rejects
-  anything else with 422 rather than guessing.
-- **`speech.text` is the reply.** If an HA `intent_script` has no `speech`, the
-  service replies "Готово." — add the block.
-- **Reload rebuilds the ASR recognizer** (~1 s) so hotwords change. In-flight
-  requests finish on the old runtime.
-- **TTS provider is configurable**: `BGV_TTS_PROVIDER=gtts` (female, cloud,
-  MP3, ~400 ms) or `piper` (local male, WAV, ~80 ms). gTTS failures fall back to
-  Piper automatically; the audio route serves whatever media type the provider
-  returns, so URLs end in `.mp3` or `.wav`.
-- **Intent names must match exactly** between `config/commands.yaml` and HA's
-  `intent_script` (only relevant in intent mode).
-- **HA 2026.10 rejects a nested `target` on REST service calls** (400). Target
-  fields (`entity_id`, `area_id`, …) must be top-level in the JSON body; the
-  client flattens them.
-- **Exact phrases bypass the margin rule.** A transcript that equals a configured
-  phrase wins even if a near-identical variant ("навън"/"отвън") scores close;
-  otherwise those variants would always be "ambiguous".
-- **`.env` is loaded with python-dotenv** because `instances.yaml` references
-  tokens by environment-variable name, and pydantic-settings does not export
-  `.env` values to `os.environ`.
-- **Fuzzy match rejects ambiguity by design** (margin < 5). If a command stops
-  matching after you add a similar phrase, that is why.
+- **HA 2026.10 rejects nested `target`** on `POST /api/services/...`; target
+  fields must be top-level (the client flattens them).
+- **Opposite verbs**: `включи` must never match `изключи`. `matcher._verb_classes`
+  rejects cross-class matches; do not loosen this.
+- **Exact phrases bypass the ambiguity margin**; near-ties for the same intent
+  are allowed on purpose.
+- **Tail padding**: default `BGV_TAIL_SILENCE_S=1.0`; shorter values truncate the
+  last syllable of commands.
+- **gTTS is cloud and ~400 ms**; it must never block an action. It falls back to
+  Piper, and TTS failures must return text only, never a 500.
+- **Audio route serves both MP3 and WAV**; `AudioClip` carries the media type.
+- **Docker healthcheck** sends `X-API-Key` from `$BGV_API_KEY`; if you change the
+  health auth, update both Dockerfile and compose.
+- **The API key is optional**: empty string disables auth. Never log it.
+- `.env` is gitignored and contains the HA token; keep mode 600.

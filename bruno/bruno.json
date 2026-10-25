@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "hass-bulgarian-commands",
+  "name": "hass-bg-gateway",
   "type": "collection",
   "ignore": ["node_modules", ".git"]
 }

@@ -1,4 +1,4 @@
-"""Health and introspection endpoints (unauthenticated)."""
+"""Health and introspection endpoints (behind the API key when configured)."""
 
 from __future__ import annotations
 
@@ -11,15 +11,12 @@ router = APIRouter(prefix="/v1", tags=["health"])
 
 @router.get("/health")
 async def health(request: Request, deep: bool = Query(default=False)) -> dict:
-    """Liveness plus readiness of ASR, TTS and (optionally) every HA instance."""
+    """Liveness plus readiness of ASR, TTS and the Home Assistant connection."""
     runtime = get_runtime(request)
-    instances: dict[str, object] = {}
-    for name, client in runtime.ha.items():
-        instances[name] = await client.health() if deep else "unknown"
+    settings = request.app.state.settings
     return {
         "status": "ok",
         "commands": len(runtime.commands.commands),
-        "default_instance": runtime.default_instance,
         "asr": {"ready": True, "model": "bg-streaming"},
         "tts": {
             "ready": runtime.tts.ready,
@@ -27,5 +24,9 @@ async def health(request: Request, deep: bool = Query(default=False)) -> dict:
             "voice": runtime.tts.voice,
             "reason": runtime.tts.unavailable_reason,
         },
-        "instances": instances,
+        "ha": {
+            "url": settings.ha_url,
+            "ready": await runtime.ha.health() if deep else "unknown",
+        },
+        "auth": {"api_key_required": bool(settings.api_key)},
     }

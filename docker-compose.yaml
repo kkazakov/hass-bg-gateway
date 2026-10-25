@@ -1,12 +1,28 @@
 services:
   gateway:
     build: .
-    container_name: hass-bulgarian-commands
+    image: hass-bg-gateway:latest
+    container_name: hass-bg-gateway
     env_file:
       - .env
+    # Loopback by default. Put Caddy/nginx in front for HTTPS, or change to
+    # "8080:8080" if the gateway is only reachable on your LAN/tailnet.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
-      - ./models:/app/models
       - ./config:/app/config:ro
+      - tts-cache:/app/models/tts-cache
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -fsS -H "X-API-Key: $${BGV_API_KEY:-}" http://127.0.0.1:8080/v1/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  tts-cache:

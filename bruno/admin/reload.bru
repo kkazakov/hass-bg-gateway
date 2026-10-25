@@ -1,0 +1,15 @@
+meta {
+  name: reload
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/reload
+  body: none
+  auth: none
+}
+
+headers {
+  X-API-Key: {{apiKey}}
+}

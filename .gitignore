@@ -10,9 +10,6 @@ models/piper/
 models/tts-cache/
 models/hotwords.txt
 
-config/instances.yaml
 
 .pytest_cache/
 .ruff_cache/
-
-.pytest_cache/

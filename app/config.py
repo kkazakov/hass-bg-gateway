@@ -1,8 +1,11 @@
-"""Configuration loading: environment settings, commands, Home Assistant instances."""
+"""Configuration: environment settings and the voice-command catalogue.
+
+One gateway process talks to **one** Home Assistant instance. Point it at a
+second HA by running a second container with its own ``.env``.
+"""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +24,24 @@ class Settings(BaseSettings):
     config_dir: Path = Path("config")
     models_dir: Path = Path("models")
 
-    api_key: str | None = None
+    # --- Home Assistant (exactly one per gateway) -------------------------
+    ha_url: str = "http://homeassistant.local:8123"
+    ha_token: str = ""
+    ha_verify_tls: bool = True
+    ha_timeout_s: float = 10.0
 
+    # --- API auth ----------------------------------------------------------
+    # Empty string disables auth. When set, every /v1 endpoint requires the
+    # X-API-Key header. Useful when the gateway is exposed through HTTPS.
+    api_key: str = ""
+
+    # --- ASR ---------------------------------------------------------------
     asr_threads: int = 4
     hotwords_score: float = 3.0
     lead_silence_s: float = 0.2
     tail_silence_s: float = 1.0
 
+    # --- TTS ---------------------------------------------------------------
     tts_enabled: bool = True
     tts_provider: str = "gtts"  # gtts (female, cloud) | piper (male, local)
     tts_language: str = "bg"
@@ -39,10 +53,6 @@ class Settings(BaseSettings):
     @property
     def commands_path(self) -> Path:
         return self.config_dir / "commands.yaml"
-
-    @property
-    def instances_path(self) -> Path:
-        return self.config_dir / "instances.yaml"
 
 
 class MatchSettings(BaseModel):
@@ -131,48 +141,6 @@ class CommandsFile(BaseModel):
         return words
 
 
-class InstanceConfig(BaseModel):
-    """A Home Assistant instance the gateway may call."""
-
-    url: str
-    token_env: str | None = None
-    token: str | None = None
-    verify_tls: bool = True
-    timeout_s: float = 10.0
-
-    def resolve_token(self) -> str:
-        if self.token_env:
-            value = os.environ.get(self.token_env, "").strip()
-            if not value:
-                raise ValueError(
-                    f"environment variable {self.token_env} is empty or unset"
-                )
-            return value
-        if self.token:
-            return self.token
-        raise ValueError("set token_env (recommended) or token")
-
-
-class InstancesFile(BaseModel):
-    default: str | None = None
-    instances: dict[str, InstanceConfig] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _validate(self) -> "InstancesFile":
-        if self.default and self.default not in self.instances:
-            raise ValueError(f"default instance {self.default!r} is not defined")
-        return self
-
-    def resolve_name(self, requested: str | None) -> str:
-        if requested:
-            if requested not in self.instances:
-                raise KeyError(f"unknown instance {requested!r}")
-            return requested
-        if self.default:
-            return self.default
-        return next(iter(self.instances))
-
-
 def _load_yaml(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"configuration file not found: {path}")
@@ -185,7 +153,3 @@ def _load_yaml(path: Path) -> dict:
 
 def load_commands(settings: Settings) -> CommandsFile:
     return CommandsFile.model_validate(_load_yaml(settings.commands_path))
-
-
-def load_instances(settings: Settings) -> InstancesFile:
-    return InstancesFile.model_validate(_load_yaml(settings.instances_path))

@@ -6,7 +6,6 @@ import logging
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
 
 from .api.deps import require_api_key
@@ -26,9 +25,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # .env holds HA_*_TOKEN values that instances.yaml references by name;
-        # pydantic-settings reads BGV_* from .env but does not export it.
-        load_dotenv(override=False)
         current = settings or Settings()
         logging.basicConfig(
             level=getattr(logging, current.log_level.upper(), logging.INFO),
@@ -44,22 +40,23 @@ def create_app(
             await app.state.runtime.aclose()
 
     app = FastAPI(
-        title="HA Bulgarian Commands",
+        title="Hass BG Gateway",
         description=(
-            "Bulgarian speech -> configured command -> Home Assistant intent. "
-            "Actions reply with text; commands marked speak:true also return audio."
+            "Bulgarian speech -> configured command -> one Home Assistant. "
+            "Actions reply with text; commands marked speak:true also return audio. "
+            "Every /v1 endpoint accepts an optional X-API-Key."
         ),
-        version="0.1.0",
+        version="1.0.0",
         lifespan=lifespan,
     )
 
-    app.include_router(health.router)
+    app.include_router(health.router, dependencies=[Depends(require_api_key)])
     app.include_router(voice.router, dependencies=[Depends(require_api_key)])
     app.include_router(admin.router, dependencies=[Depends(require_api_key)])
 
     @app.get("/", include_in_schema=False)
     async def index() -> dict:
-        return {"service": "hass-bulgarian-commands", "docs": "/docs"}
+        return {"service": "hass-bg-gateway", "docs": "/docs"}
 
     return app
 

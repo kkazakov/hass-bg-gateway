@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import CommandsFile, InstancesFile, Settings
+from app.config import CommandsFile, Settings
 from app.main import create_app
 from app.matcher import Matcher
 from app.runtime import Runtime
@@ -135,26 +135,18 @@ def build_runtime(
     tts_ready: bool = True,
 ) -> Runtime:
     commands = CommandsFile.model_validate(COMMANDS)
-    instances = InstancesFile.model_validate(
-        {
-            "default": "home",
-            "instances": {"home": {"url": "http://ha.local:8123", "token": "test"}},
-        }
-    )
     return Runtime(
-        settings=Settings(api_key=None),
+        settings=Settings(_env_file=None),
         commands=commands,
-        instances=instances,
         matcher=Matcher(commands.commands),
         asr=FakeAsr(transcript),
         tts=FakeTts(tts_ready),
-        ha={"home": FakeHa()},
-        default_instance="home",
+        ha=FakeHa(),
     )
 
 
 def client_for(runtime: Runtime, *, api_key: str | None = None) -> TestClient:
-    settings = Settings(api_key=api_key)
+    settings = Settings(_env_file=None, api_key=api_key or "")
 
     async def builder(_: Settings) -> Runtime:
         return runtime
@@ -173,7 +165,7 @@ def test_action_calls_service_and_returns_text_only() -> None:
     assert body["audio_url"] is None
     assert body["matched"]["intent"] == "HallLightOff"
     assert body["text"] == "Изключих лампата в хола."
-    service, payload = runtime.ha["home"].services[0]
+    service, payload = runtime.ha.services[0]
     assert service == "light.turn_off"
     assert payload["target"] == {"entity_id": "light.hall"}
 
@@ -214,7 +206,7 @@ def test_intent_mode_still_works() -> None:
         body = client.post("/v1/command", json={"text": "пусни филм"}).json()
     assert body["kind"] == "action"
     assert body["matched"]["intent"] == "MovieMode"
-    assert runtime.ha["home"].intents == ["MovieMode"]
+    assert runtime.ha.intents == ["MovieMode"]
 
 
 def test_no_match_does_not_touch_home_assistant() -> None:
@@ -225,8 +217,8 @@ def test_no_match_does_not_touch_home_assistant() -> None:
     assert response.status_code == 200
     assert body["kind"] == "no_match"
     assert body["text"] == "Не разбрах. Повторете, моля."
-    assert runtime.ha["home"].services == []
-    assert runtime.ha["home"].intents == []
+    assert runtime.ha.services == []
+    assert runtime.ha.intents == []
 
 
 def test_voice_upload_runs_asr_and_action() -> None:
@@ -290,7 +282,8 @@ def test_health_and_commands() -> None:
     assert health["status"] == "ok"
     assert health["asr"]["ready"] is True
     assert health["tts"]["provider"] == "gtts"
-    assert health["instances"]["home"] is True
+    assert health["ha"]["ready"] is True
+    assert health["auth"]["api_key_required"] is False
     assert commands["language"] == "bg"
     by_intent = {entry["intent"]: entry for entry in commands["commands"]}
     assert by_intent["HallLightOff"]["mode"] == "action"
@@ -298,10 +291,30 @@ def test_health_and_commands() -> None:
     assert by_intent["MovieMode"]["mode"] == "intent"
 
 
-def test_unknown_instance_is_404() -> None:
+def test_api_key_covers_all_endpoints() -> None:
+    runtime = build_runtime()
+    with client_for(runtime, api_key="secret") as client:
+        assert client.get("/v1/health").status_code == 401
+        assert client.get("/v1/commands").status_code == 401
+        health = client.get("/v1/health?deep=true", headers={"X-API-Key": "secret"})
+        assert health.status_code == 200
+        assert health.json()["auth"]["api_key_required"] is True
+
+        command = client.post(
+            "/v1/command",
+            json={"text": "каква е температурата навън"},
+            headers={"X-API-Key": "secret"},
+        ).json()
+        audio = client.get(command["audio_url"])
+        assert audio.status_code == 401
+        assert (
+            client.get(command["audio_url"], headers={"X-API-Key": "secret"}).status_code
+            == 200
+        )
+
+
+def test_api_key_defaults_to_disabled() -> None:
     runtime = build_runtime()
     with client_for(runtime) as client:
-        response = client.post(
-            "/v1/command", json={"text": "изключи лампата в хола", "instance": "nope"}
-        )
-    assert response.status_code == 404
+        assert client.get("/v1/health").status_code == 200
+        assert client.get("/v1/commands").status_code == 200

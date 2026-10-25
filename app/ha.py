@@ -18,8 +18,6 @@ from typing import Any
 
 import httpx
 
-from .config import InstanceConfig
-
 log = logging.getLogger(__name__)
 
 
@@ -28,15 +26,22 @@ class HaError(RuntimeError):
 
 
 class HaClient:
-    def __init__(self, name: str, config: InstanceConfig, token: str) -> None:
-        self.name = name
-        self._config = config
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        *,
+        verify_tls: bool = True,
+        timeout_s: float = 10.0,
+    ) -> None:
+        self.name = "homeassistant"
+        self.url = url.rstrip("/")
         self._token = token
         self._client = httpx.AsyncClient(
-            base_url=config.url.rstrip("/"),
+            base_url=self.url,
             headers={"Authorization": f"Bearer {token}"},
-            verify=config.verify_tls,
-            timeout=httpx.Timeout(config.timeout_s, connect=5.0),
+            verify=verify_tls,
+            timeout=httpx.Timeout(timeout_s, connect=5.0),
         )
 
     async def handle_intent(self, intent: str) -> dict[str, Any]:

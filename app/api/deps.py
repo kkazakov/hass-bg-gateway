@@ -23,11 +23,17 @@ async def require_api_key(
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
-    expected = getattr(request.app.state.settings, "api_key", None)
+    """Enforce the optional shared API key on every /v1 endpoint.
+
+    ``BGV_API_KEY`` empty means auth is disabled (the default). When set, the
+    caller must send ``X-API-Key: <key>``. Comparison is constant-time.
+    """
+    expected = (getattr(request.app.state.settings, "api_key", "") or "").strip()
     if not expected:
         return
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+    if not x_api_key or not secrets.compare_digest(x_api_key.strip(), expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or missing X-API-Key",
+            headers={"WWW-Authenticate": "ApiKey"},
         )

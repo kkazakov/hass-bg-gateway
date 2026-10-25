@@ -51,7 +51,6 @@ class VoiceResponse(BaseModel):
     text: str
     transcript: str
     audio_url: str | None = None
-    instance: str
     matched: Matched | None = None
     timings: Timings
     reason: str | None = Field(default=None, description="why no match, for logs")
@@ -59,7 +58,6 @@ class VoiceResponse(BaseModel):
 
 class CommandRequest(BaseModel):
     text: str
-    instance: str | None = None
     speak: Literal["auto", "true", "false"] = "auto"
 
 
@@ -77,17 +75,11 @@ async def _run_pipeline(
     *,
     runtime: Runtime,
     transcript: str,
-    instance: str | None,
     speak: Literal["auto", "true", "false"],
     timings: Timings,
     started: float,
 ) -> VoiceResponse:
-    try:
-        instance_name, client = runtime.client(instance)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
-        ) from exc
+    client = runtime.ha
 
     t0 = time.perf_counter()
     match = runtime.matcher.match(transcript)
@@ -95,8 +87,7 @@ async def _run_pipeline(
 
     if not match.ok:
         log.info(
-            "no_match instance=%s transcript=%r score=%.1f reason=%s",
-            instance_name,
+            "no_match transcript=%r score=%.1f reason=%s",
             transcript,
             match.score,
             match.reason,
@@ -107,7 +98,6 @@ async def _run_pipeline(
             speak=False,
             text=NO_MATCH_TEXT,
             transcript=transcript,
-            instance=instance_name,
             timings=timings,
             reason=match.reason,
         )
@@ -150,8 +140,7 @@ async def _run_pipeline(
 
     timings.total_ms = round((time.perf_counter() - started) * 1000, 2)
     log.info(
-        "ok instance=%s intent=%s transcript=%r score=%.1f speak=%s total_ms=%.1f",
-        instance_name,
+        "ok intent=%s transcript=%r score=%.1f speak=%s total_ms=%.1f",
         match.intent,
         transcript,
         match.score,
@@ -164,7 +153,6 @@ async def _run_pipeline(
         text=text,
         transcript=transcript,
         audio_url=audio_url,
-        instance=instance_name,
         matched=Matched(
             intent=match.intent,
             phrase=match.phrase or "",
@@ -179,7 +167,6 @@ async def _run_pipeline(
 async def voice(
     request: Request,
     audio: UploadFile,
-    instance: str | None = Query(default=None),
     speak: Literal["auto", "true", "false"] = Query(default="auto"),
 ) -> VoiceResponse:
     """Upload a 16 kHz mono PCM16 WAV file and execute the configured command."""
@@ -212,7 +199,6 @@ async def voice(
         request,
         runtime=runtime,
         transcript=transcript,
-        instance=instance,
         speak=speak,
         timings=timings,
         started=started,
@@ -222,7 +208,6 @@ async def voice(
 @router.post("/voice/raw", response_model=VoiceResponse)
 async def voice_raw(
     request: Request,
-    instance: str | None = Query(default=None),
     speak: Literal["auto", "true", "false"] = Query(default="auto"),
 ) -> VoiceResponse:
     """Same as ``/v1/voice`` but takes the WAV as the raw request body (MCU friendly)."""
@@ -259,7 +244,6 @@ async def voice_raw(
         request,
         runtime=runtime,
         transcript=transcript,
-        instance=instance,
         speak=speak,
         timings=timings,
         started=started,
@@ -274,7 +258,6 @@ async def command(request: Request, body: CommandRequest) -> VoiceResponse:
         request,
         runtime=runtime,
         transcript=body.text,
-        instance=body.instance,
         speak=body.speak,
         timings=Timings(),
         started=time.perf_counter(),

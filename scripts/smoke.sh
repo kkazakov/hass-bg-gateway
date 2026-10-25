@@ -13,7 +13,7 @@ if [[ -n "${BGV_API_KEY:-}" ]]; then
 fi
 
 echo "== health"
-curl -sS "${HOST}/v1/health" | python3 -m json.tool
+curl -sS "${HOST}/v1/health?deep=true" "${AUTH[@]}" | python3 -m json.tool
 
 echo
 echo "== text command"

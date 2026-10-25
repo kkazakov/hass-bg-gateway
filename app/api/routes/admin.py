@@ -15,9 +15,9 @@ router = APIRouter(prefix="/v1", tags=["admin"])
 
 @router.post("/reload")
 async def reload(request: Request) -> dict:
-    """Re-read commands.yaml + instances.yaml and rebuild the runtime.
+    """Re-read commands.yaml and rebuild the runtime.
 
-    Rebuilding reloads the ASR model (~1 s) so that hotword changes take
+    Rebuilding reloads the ASR model (~1 s) so hotword and phrase changes take
     effect. In-flight requests finish on the old runtime.
     """
     runtime = get_runtime(request)
@@ -32,5 +32,5 @@ async def reload(request: Request) -> dict:
     return {
         "status": "reloaded",
         "commands": len(new_runtime.commands.commands),
-        "instances": sorted(new_runtime.ha),
+        "ha": settings.ha_url,
     }
