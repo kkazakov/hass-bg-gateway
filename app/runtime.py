@@ -99,6 +99,7 @@ async def build_runtime(settings: Settings) -> Runtime:
         commands.commands,
         threshold=commands.match.threshold,
         margin=commands.match.margin,
+        extra_verbs=commands.extra_verbs(),
     )
 
     ha = HaClient(

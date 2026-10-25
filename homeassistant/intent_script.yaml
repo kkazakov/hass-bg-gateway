@@ -1,5 +1,7 @@
 # Copy this into your Home Assistant configuration.yaml (or merge the entries).
-# Each key must also exist in config/commands.yaml with the same name.
+# Only custom `commands:` entries with neither `action:` nor `query:` use this
+# file; `targets:` never call intent_script. Each key must also exist in the
+# selected catalogue (config/commands.yaml by default) with the same name.
 # `speech.text` is the reply the gateway returns; it is spoken only when the
 # command is marked `speak: true` there.
 

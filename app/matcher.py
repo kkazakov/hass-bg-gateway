@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
 
-from .config import CommandConfig
+from .config import DEFAULT_OFF_VERBS, DEFAULT_ON_VERBS, CommandConfig
 
 _NON_WORD = re.compile(r"[^\w\s]", re.UNICODE)
 _SPACES = re.compile(r"\s+")
@@ -21,22 +22,13 @@ _SPACES = re.compile(r"\s+")
 # Bulgarian verbs that mean opposite things. Fuzzy matching must never turn
 # "включи" (on) into "изключи" (off) just because they differ by two letters.
 _VERB_CLASSES: dict[str, frozenset[str]] = {
-    "on": frozenset({"включи", "включвам", "пусни", "светни", "запали", "стартирай"}),
-    "off": frozenset({"изключи", "изключвам", "изгаси", "угаси", "загаси", "спри"}),
+    "on": frozenset(DEFAULT_ON_VERBS),
+    "off": frozenset(DEFAULT_OFF_VERBS),
     "open": frozenset({"отвори", "открий", "вдигни"}),
     "close": frozenset({"затвори", "закрий", "смъкни", "спусни", "свали"}),
     "raise": frozenset({"увеличи", "качи", "усили", "вдигни"}),
     "lower": frozenset({"намали", "сниши", "свали"}),
 }
-
-
-def _verb_classes(tokens: list[str]) -> set[str]:
-    found: set[str] = set()
-    for token in tokens:
-        for name, words in _VERB_CLASSES.items():
-            if token in words:
-                found.add(name)
-    return found
 
 
 def normalise(text: str) -> str:
@@ -79,11 +71,19 @@ class Matcher:
         *,
         threshold: float = 88.0,
         margin: float = 5.0,
+        extra_verbs: Mapping[str, Iterable[str]] | None = None,
     ) -> None:
         if not commands:
             raise ValueError("no commands configured")
         self._threshold = threshold
         self._margin = margin
+        self._verb_classes: dict[str, set[str]] = {
+            name: set(words) for name, words in _VERB_CLASSES.items()
+        }
+        for name, words in (extra_verbs or {}).items():
+            self._verb_classes.setdefault(name, set()).update(
+                word.strip().lower() for word in words if word.strip()
+            )
         self._intents: list[str] = []
         self._choices: list[str] = []
         self._original: dict[str, str] = {}
@@ -127,8 +127,8 @@ class Matcher:
 
         # Guard against opposite verbs ("включи" vs "изключи"): a wrong action
         # is worse than asking to repeat.
-        query_classes = _verb_classes(query.split())
-        phrase_classes = _verb_classes(best_choice.split())
+        query_classes = self._classes_of(query.split())
+        phrase_classes = self._classes_of(best_choice.split())
         if query_classes and phrase_classes and not (query_classes & phrase_classes):
             return Match(
                 None, None, float(best_score), float(second_score), transcript,
@@ -159,6 +159,14 @@ class Matcher:
             runner_up=float(second_score),
             transcript=transcript,
         )
+
+    def _classes_of(self, tokens: list[str]) -> set[str]:
+        found: set[str] = set()
+        for token in tokens:
+            for name, words in self._verb_classes.items():
+                if token in words:
+                    found.add(name)
+        return found
 
     @property
     def intents(self) -> list[str]:

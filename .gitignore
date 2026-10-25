@@ -13,3 +13,7 @@ models/hotwords.txt
 
 .pytest_cache/
 .ruff_cache/
+
+# Per-deployment command catalogue. Copy commands-example.yaml or write your
+# own; never commit real entity ids and phrases.
+config/commands.yaml

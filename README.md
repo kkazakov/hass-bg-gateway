@@ -4,8 +4,9 @@ Bulgarian voice control for **one Home Assistant instance**, built for speed and
 privacy: on-device speech recognition, a small fixed command catalogue, and no
 LLM in the request path.
 
-Say **„изключи лампата“** → the gateway transcribes it, matches the configured
-phrase, calls `light.turn_off`, and returns a text reply in ~100 ms.
+Say **„изключи лампата“** → the gateway transcribes it, combines the built-in
+off verb with the configured target, calls `light.turn_off`, and returns a text
+reply in ~100 ms.
 Sensor questions such as **„каква е температурата навън“** also return spoken
 audio, with a female Bulgarian voice.
 
@@ -31,10 +32,13 @@ text reply  (+ TTS audio for speak: true)
   x86 CPU; cached query audio answers in ~100 ms.
 - **Offline ASR**: `preslaff/bulgarian-asr-zipformer-streaming` via sherpa-onnx;
   no audio leaves the machine.
-- **Fixed, declarative command set**: 2–20 phrases in `config/commands.yaml`.
-  Add a command without writing code, then `POST /v1/reload`.
-- **Three mapping modes**: call a service directly (`action`), read an entity and
-  render a sentence (`query`), or call an HA `intent_script` by name.
+- **Composable, declarative catalogue**: map a Bulgarian noun phrase to an
+  entity or scene in `config/commands.yaml`; the built-in on/off verbs
+  (`включи`/`пусни`/`изключи`/`спри`/`загаси` …) are combined automatically.
+  Add custom commands without writing code, then `POST /v1/reload`.
+- **Custom commands and three mapping modes**: call a service directly
+  (`action`), read an entity and render a spoken sentence (`query`, e.g.
+  temperature), or call an HA `intent_script` by name.
 - **Female Bulgarian TTS** by default (Google Translate TTS), with automatic
   fallback to a local Piper voice; can be switched fully offline.
 - **Optional API key** on every `/v1` endpoint, for exposing the gateway through
@@ -58,10 +62,13 @@ git clone https://github.com/kkazakov/hass-bg-gateway.git
 cd hass-bg-gateway
 
 cp .env.example .env
-$EDITOR .env
+cp config/commands-example.yaml config/commands.yaml
+$EDITOR .env config/commands.yaml
 ```
 
-Minimum:
+The repo deliberately does **not** ship `config/commands.yaml`: it is
+gitignored because it contains your home's entity ids and phrases. Copy the
+example and replace its placeholder entities. Minimum:
 
 ```dotenv
 BGV_HA_URL=http://homeassistant.local:8123
@@ -98,10 +105,10 @@ Expected: `status: ok`, `asr.ready: true`, `tts.ready: true`, `ha.ready: true`.
 
 ### 5. Run a command (text, then audio)
 
-The starter catalogue points at `light.living_room` and
-`sensor.outside_temperature`. Replace them in `config/commands.yaml` with real
-entities first; otherwise the gateway returns `502` (entity/service not found).
-The sample WAVs match the starter phrases.
+The example catalogue maps `лампата` to `light.living_room` and asks
+`sensor.outside_temperature` for the weather. Replace them in your
+`config/commands.yaml` with real entities first; otherwise the gateway returns
+`502` (entity/service not found). The sample WAVs match the example phrases.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8125/v1/command \
@@ -114,8 +121,7 @@ curl -s -X POST http://127.0.0.1:8125/v1/voice \
 
 With an API key, add `-H "X-API-Key: $BGV_API_KEY"` to both.
 
-The starter `config/commands.yaml` uses placeholder entities
-(`light.living_room`, `sensor.outside_temperature`). Replace them with your own,
+Your `config/commands.yaml` is gitignored; edit it with your own entities,
 then reload:
 
 ```bash
@@ -124,15 +130,17 @@ curl -s -X POST http://127.0.0.1:8125/v1/reload \
   -H "X-API-Key: $BGV_API_KEY"
 ```
 
-For a fuller real-home catalogue (hall light, night light, all-lights scenes,
-indoor/outdoor temperature), use `config/commands-example.yaml`:
+`config/commands-example.yaml` is the tracked real-home example (hall light,
+night light, all-lights scenes, indoor/outdoor temperature). The repository has
+no `config/commands.yaml`; each deployment creates its own:
 
 ```bash
-# either copy it over the starter:
 cp config/commands-example.yaml config/commands.yaml
-# or keep both and select it in .env:
-echo 'BGV_COMMANDS_FILE=commands-example.yaml' >> .env
+$EDITOR config/commands.yaml
 ```
+
+To try the example without editing it, point `BGV_COMMANDS_FILE` at it:
+`echo 'BGV_COMMANDS_FILE=commands-example.yaml' >> .env`.
 
 ## Configuration
 
@@ -167,9 +175,18 @@ with its own `.env` and port (see [Multiple HA instances](#multiple-ha-instances
 
 ## Command catalogue (`config/commands.yaml`)
 
-`config/commands.yaml` is the minimal starter. `config/commands-example.yaml`
-contains a full real-home example; select it with
+The repository only tracks `config/commands-example.yaml`. Each deployment
+creates `config/commands.yaml` with its own entity ids and phrases; that file is
+gitignored. To try the example unchanged, select it with
 `BGV_COMMANDS_FILE=commands-example.yaml`.
+
+The catalogue has two layers:
+
+- **`targets:`** map Bulgarian noun phrases to an entity, switch or scene. The
+  built-in on/off verbs are combined with every phrase automatically.
+- **`commands:`** are custom full-phrase commands for queries (temperature),
+  intent scripts, unusual services, or an exact phrase that should override a
+  generated target phrase.
 
 ```yaml
 language: bg
@@ -178,35 +195,74 @@ match:
   threshold: 88   # RapidFuzz WRatio, 0-100
   margin: 5       # best must beat the runner-up by this much
 
-commands:
-  LightOff:
-    speak: false
+targets:
+  лампите в хола:
     phrases:
-      - "изключи лампата"
-      - "изгаси лампата"
-    hotwords: ["лампата"]
-    action:
-      service: light.turn_off
-      target:
-        entity_id: light.living_room   # <-- your entity
-      response: "Изключих лампата."
+      - "лампите в хола"
+      - "осветлението в хола"
+    hotwords: ["лампите", "хола"]
+    entity: switch.hall_lamp          # switch.turn_on / switch.turn_off
+
+  осветлението:
+    phrases: ["осветлението", "всички лампи"]
+    on: scene.all_lights_on
+    off: scene.all_lights_off         # both are activated with scene.turn_on
 ```
 
-### Mapping modes
+With that catalogue all of these work:
 
-| Fields | What runs | HA setup |
-|---|---|---|
-| `action:` | `POST /api/services/<domain>/<service>` | none |
-| `query:` | `GET /api/states/<entity_id>`, then template | none |
-| neither | `POST /api/intent/handle` by intent name | `intent_script` entry required |
+| Spoken | Action |
+|---|---|
+| `включи лампите в хола` / `пусни лампите в хола` | `switch.turn_on` |
+| `изключи лампите в хола` / `спри лампите в хола` / `загаси лампите в хола` | `switch.turn_off` |
+| `светни осветлението` / `включи всички лампи` | `scene.turn_on scene.all_lights_on` |
+| `угаси всички лампи` / `загаси осветлението` | `scene.turn_on scene.all_lights_off` |
 
-An `action` may also carry `data:` (e.g. brightness). `target` fields are sent
-top-level, because HA 2026.10 rejects a nested `target` on the REST service API.
+### Default verbs
 
-A `query` must set `speak: true`; it supports rounding, units and a Bulgarian
-template:
+Built-in **on** verbs: `включи`, `включвай`, `включвам`, `пусни`, `пускай`,
+`пускам`, `светни`, `светвай`, `запали`, `пали`, `стартирай`, `активирай`.
+
+Built-in **off** verbs: `изключи`, `изключвай`, `изключвам`, `спри`, `спирай`,
+`спирам`, `загаси`, `загасяй`, `загасвай`, `изгаси`, `угаси`, `угасвай`,
+`прекрати`.
+
+Add local synonyms without replacing the defaults:
 
 ```yaml
+verbs:
+  on: [включвай]       # already built in; example of an extra synonym
+  off: [прекрати]
+```
+
+### Target forms
+
+| YAML | Meaning |
+|---|---|
+| `лампите: switch.hall` | Compact form; the key is also the phrase. The service is inferred from the domain. |
+| `entity: switch.hall` | Same entity for both directions; `<domain>.turn_on` / `<domain>.turn_off`. |
+| `on: scene.all_on` + `off: scene.all_off` | Different entities per direction. Scene entities always use `scene.turn_on`. |
+| `on: {service: ..., target: ..., data: ..., response: ...}` | Full service call, same shape as a custom `action`. |
+
+The target key is the default phrase; use `phrases:` to add aliases.
+`hotwords:` works as in custom commands. The generated reply is
+`Включих <first phrase>.` or `Изключих <first phrase>.`; set `response:` on the
+action to override it.
+
+A missing `on:` or `off:` means that direction is not generated. A scene used
+through `entity:` is on-only, because re-applying the same scene for "off" would
+be wrong; use separate on/off scenes for both directions. Service inference
+assumes the domain exposes `turn_on`/`turn_off` (light, switch, fan,
+input_boolean, …); for `cover`, `valve` or anything else, use the full action
+mapping.
+
+### Custom commands
+
+Use `commands:` for anything that is not a simple on/off target. The shape is
+unchanged, so existing catalogues and temperature queries keep working:
+
+```yaml
+commands:
   OutsideTemperature:
     speak: true
     phrases: ["каква е температурата навън", "колко градуса е навън"]
@@ -219,7 +275,19 @@ template:
       template: "В момента температурата навън е {value} {unit}."
 ```
 
-Template placeholders: `{value}` (localised with a decimal comma), `{unit}`,
+Mapping modes:
+
+| Fields | What runs | HA setup |
+|---|---|---|
+| `action:` | `POST /api/services/<domain>/<service>` | none |
+| `query:` | `GET /api/states/<entity_id>`, then template | none |
+| neither | `POST /api/intent/handle` by intent name | `intent_script` entry required |
+
+An `action` may also carry `data:` (e.g. brightness). `target` fields are sent
+top-level, because HA 2026.10 rejects a nested `target` on the REST service API.
+
+A `query` must set `speak: true`; it supports rounding, units and a Bulgarian
+template. Template placeholders: `{value}` (localised with a decimal comma), `{unit}`,
 `{name}` (HA friendly name), `{state}` (raw state). `unit_singular` is used when
 the rounded value is exactly 1. `round: null` keeps the raw precision.
 
@@ -237,18 +305,26 @@ intent_script:
 ```
 
 An example file is in [`homeassistant/intent_script.yaml`](homeassistant/intent_script.yaml).
+Target commands never use intent_script; that mode is only for custom commands
+with neither `action:` nor `query:`.
 
 ### Matching behaviour
 
-- **Exact configured phrases win immediately**, even when a near-identical
-  phrase exists (`навън` vs `отвън`).
+- **Default verbs are composed with targets at load time.** Every target phrase
+  becomes one ordinary phrase per built-in (and extra) verb.
+- **Exact phrases win immediately**, even when a near-identical phrase exists
+  (`навън` vs `отвън`).
 - **Opposite verbs are rejected.** „включи“ (on) never fuzzy-matches „изключи“
   (off); the reply is „Не разбрах“ instead of the wrong action. Verbs are
   grouped on/off, open/close, raise/lower.
+- **Custom commands win over an identical generated target phrase.** This lets
+  one exact wording use a custom action or reply while the rest of the target
+  still works. Duplicate phrases *within* `commands:` or across two targets are
+  rejected at load time.
 - **Near-ties are ambiguous** unless both candidates belong to the same command.
 - **Hotwords** bias the ASR toward device names (`лампата`, `хола`). They are
-  collected from all commands; add a word if the ASR consistently mishears it.
-- Duplicate phrases across two commands are rejected at load time.
+  collected from targets and custom commands; add a word if the ASR consistently
+  mishears it.
 - After editing, `POST /v1/reload` re-reads the file and reloads the ASR model
   (~1–2 s); in-flight requests finish on the old runtime.
 
@@ -413,7 +489,7 @@ Python 3.12+ is supported. `pytest -q` runs the API/matcher/audio tests with a
 fake runtime; no models, network or Home Assistant are needed.
 
 ```bash
-pytest -q          # 39 tests
+pytest -q          # 59 tests
 ```
 
 ## Latency
@@ -423,7 +499,7 @@ Measured on a Ryzen AI 9 HX 370 (warm models, this service, real HA):
 | Stage | Value |
 |---|---|
 | ASR, 2.2 s command + 1 s padding | 60–90 ms |
-| Phrase match (tens of phrases) | 0.1–0.2 ms |
+| Phrase match (generated target phrases) | 0.1–1 ms |
 | HA service call / state read (LAN) | 5–60 ms |
 | gTTS (female, 3.8 s answer) | 350–450 ms |
 | Piper (local fallback) | ~80 ms |
@@ -460,8 +536,8 @@ actions. gTTS is network-bound and dominates spoken queries; use
 | `8125` resets the connection / health is `starting` | The image is stale (still runs `uvicorn` on 8080). Rebuild: `docker compose up -d --build --force-recreate` |
 | HA returns `400` for a service | Target fields must be top-level; the client already flattens them |
 | `422` on `/v1/voice` | Audio must be 16 kHz mono PCM16 WAV |
-| `no_match` for a phrase you said | Add the phrase/hotwords, check `/v1/commands`, reload |
-| „Не разбрах“ for „включи…“ | No on-command configured, or it was rejected as the opposite of „изключи“ |
+| `no_match` for a phrase you said | Add a target phrase/alias or custom command, check `/v1/commands`, reload |
+| „Не разбрах“ for „включи…“ | That target has no `on:` direction, or it was rejected as the opposite of „изключи“ |
 | Female voice missing / male voice | gTTS blocked; check network. `BGV_TTS_PROVIDER=piper` is the offline fallback |
 | Docker build fails downloading models | Retry the build; Hugging Face may be rate-limiting |
 | Slow ASR | Set `BGV_ASR_THREADS` to physical cores; avoid oversubscribing |
@@ -472,7 +548,7 @@ actions. gTTS is network-bound and dominates spoken queries; use
 ```
 app/
   main.py              FastAPI app factory, lifespan, optional API key
-  config.py            Settings + command-catalogue models
+  config.py            Settings, target expansion, command-catalogue models
   asr.py               sherpa-onnx streaming ASR, hotwords
   matcher.py           normalisation, fuzzy matching, antonym guard
   ha.py                single Home Assistant REST client
@@ -481,15 +557,15 @@ app/
   runtime.py           wiring and lifecycle
   api/routes/          voice, health, admin
 config/
-  commands.yaml        starter phrases with placeholder entities
-  commands-example.yaml full real-home example (scenes, temperatures)
+  commands-example.yaml tracked real-home example to copy and adapt
+                        (commands.yaml itself is gitignored per deployment)
 examples/
   *.wav                ready-to-post Bulgarian command samples
 homeassistant/
   intent_script.yaml   optional example for intent mode
 models/
   fetch_models.sh      ASR + Piper download, bpe.vocab generation
-tests/                 API, matcher, audio, reply tests (fake runtime)
+tests/                 API, matcher, target, audio, reply tests (fake runtime)
 Dockerfile
 docker-compose.yaml
 .env.example
@@ -505,7 +581,8 @@ disabled.
 
 ## Limits / roadmap
 
-- Fixed phrases only; this is deliberate (predictable, fast, no LLM).
+- Fixed, declarative phrases only (targets + built-in verbs and explicit
+  commands); there is deliberately no free-form understanding or LLM.
 - One HA per gateway; run multiple containers for multiple homes.
 - No streaming partials or wake word.
 - ESP32 satellite (button + mic + amp) is not built yet.

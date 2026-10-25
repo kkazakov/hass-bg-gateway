@@ -13,6 +13,16 @@ from app.matcher import Matcher
 from app.runtime import Runtime
 from app.tts import AudioClip
 
+TARGET_COMMANDS = {
+    "language": "bg",
+    "targets": {
+        "лампите в хола": {
+            "phrases": ["лампите в хола", "осветлението в хола"],
+            "entity": "switch.hall_lamp",
+        }
+    },
+}
+
 COMMANDS = {
     "language": "bg",
     "match": {"threshold": 88, "margin": 5},
@@ -133,12 +143,13 @@ def build_runtime(
     *,
     transcript: str = "изключи лампата в хола",
     tts_ready: bool = True,
+    catalogue: dict | None = None,
 ) -> Runtime:
-    commands = CommandsFile.model_validate(COMMANDS)
+    commands = CommandsFile.model_validate(catalogue or COMMANDS)
     return Runtime(
         settings=Settings(_env_file=None),
         commands=commands,
-        matcher=Matcher(commands.commands),
+        matcher=Matcher(commands.commands, extra_verbs=commands.extra_verbs()),
         asr=FakeAsr(transcript),
         tts=FakeTts(tts_ready),
         ha=FakeHa(),
@@ -207,6 +218,25 @@ def test_intent_mode_still_works() -> None:
     assert body["kind"] == "action"
     assert body["matched"]["intent"] == "MovieMode"
     assert runtime.ha.intents == ["MovieMode"]
+
+
+def test_target_command_calls_inferred_service_and_returns_text() -> None:
+    runtime = build_runtime(catalogue=TARGET_COMMANDS)
+    with client_for(runtime) as client:
+        body = client.post(
+            "/v1/command", json={"text": "пусни лампите в хола"}
+        ).json()
+        commands = client.get("/v1/commands").json()
+
+    assert body["kind"] == "action"
+    assert body["speak"] is False
+    assert body["matched"]["intent"] == "лампите в хола:on"
+    assert body["text"] == "Включих лампите в хола."
+    service, payload = runtime.ha.services[0]
+    assert service == "switch.turn_on"
+    assert payload["target"] == {"entity_id": "switch.hall_lamp"}
+    by_intent = {entry["intent"]: entry for entry in commands["commands"]}
+    assert by_intent["лампите в хола:on"]["mode"] == "action"
 
 
 def test_no_match_does_not_touch_home_assistant() -> None:

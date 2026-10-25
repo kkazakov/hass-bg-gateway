@@ -6,16 +6,18 @@
 #   - copy it over commands.yaml.
 # Replace the entity ids with your own before running the actions.
 #
-# Voice commands. Each key is an intent name.
+# `targets` compose every built-in on/off verb with every phrase:
+#   "включи лампата в хола"  -> light.turn_on light.light2
+#   "загаси лампата в хола"  -> light.turn_off light.light2
+#   "пусни всички светлини"  -> scene.turn_on scene.all_lights_on
+#   "изключи всички лампи"   -> scene.turn_on scene.all_lights_off
 #
-# Mapping (choose one per command):
-#   action: call a Home Assistant service directly          (self-contained)
-#   query:  read an entity and speak the rendered answer
-#   neither: call a Home Assistant intent_script by this name
+# A target can be written compactly as `phrase: entity.id`. Use `entity:` for
+# the same entity in both directions, or `on:`/`off:` when they differ (scenes
+# always use scene.turn_on, including the off scene).
 #
-# `phrases` are what you can say; add variants as you notice ASR misses.
-# `hotwords` bias the ASR toward your device words.
-# `speak: true` returns a spoken answer; actions stay text-only.
+# `commands` stays for custom full-phrase commands. A query (temperature)
+# keeps the exact same shape as before: `speak: true` plus `query:`.
 
 language: bg
 
@@ -23,74 +25,55 @@ match:
   threshold: 88   # RapidFuzz WRatio, 0-100
   margin: 5       # best must beat second-best by this much
 
+# Optional extra verb synonyms; built-in defaults always remain active.
+verbs:
+  on: []
+  off: []
+
+targets:
+  лампата в хола:
+    phrases:
+      - "лампата в хола"
+      - "лампите в хола"
+      - "осветлението в хола"
+    hotwords:
+      - "лампата"
+      - "хола"
+    entity: light.light2
+
+  нощното осветление:
+    phrases:
+      - "нощно осветление"
+      - "нощното осветление"
+    hotwords:
+      - "нощното"
+      - "осветление"
+    entity: scene.night_light   # a scene only supports "on"
+
+  всички светлини:
+    phrases:
+      - "осветлението"
+      - "всички светлини"
+      - "всички лампи"
+    hotwords:
+      - "всички"
+      - "светлини"
+      - "лампи"
+    on: scene.all_lights_on
+    off: scene.all_lights_off
+
 commands:
-  HallLightOff:
-    speak: false
-    phrases:
-      - "изключи лампата в хола"
-      - "изгаси лампата в хола"
-      - "изключи осветлението в хола"
-    hotwords:
-      - "лампата"
-      - "хола"
-    action:
-      service: light.turn_off
-      target:
-        entity_id: light.light2
-      response: "Изключих лампата в хола."
-
-  HallLightOn:
-    speak: false
-    phrases:
-      - "включи лампата в хола"
-      - "светни лампата в хола"
-      - "включи осветлението в хола"
-    hotwords:
-      - "лампата"
-      - "хола"
-    action:
-      service: light.turn_on
-      target:
-        entity_id: light.light2
-      response: "Включих лампата в хола."
-
+  # A custom action for a phrase without a verb. The generated target still
+  # handles "включи нощното осветление" and the other on verbs.
   NightLight:
     speak: false
     phrases:
-      - "включи нощно осветление"
-      - "пусни нощното осветление"
       - "нощно осветление"
     action:
       service: scene.turn_on
       target:
         entity_id: scene.night_light
       response: "Включих нощното осветление."
-
-  AllLightsOn:
-    speak: false
-    phrases:
-      - "включи осветлението"
-      - "включи всички светлини"
-      - "включи всички лампи"
-      - "пусни всички лампи"
-    action:
-      service: scene.turn_on
-      target:
-        entity_id: scene.all_lights_on
-      response: "Включих всички светлини."
-
-  AllLightsOff:
-    speak: false
-    phrases:
-      - "изключи осветлението"
-      - "изключи всички светлини"
-      - "изключи всички лампи"
-      - "загаси всички лампи"
-    action:
-      service: scene.turn_on
-      target:
-        entity_id: scene.all_lights_off
-      response: "Изключих всички светлини."
 
   HallTemperature:
     speak: true
@@ -125,6 +108,19 @@ commands:
       unit: "градуса"
       unit_singular: "градус"
       template: "В момента температурата навън е {value} {unit}."
+
+  # Custom full-phrase example: override one generated phrase with a custom
+  # reply (explicit commands win over an identical target phrase).
+  #
+  # HallLightOffQuiet:
+  #   speak: false
+  #   phrases:
+  #     - "изключи лампата в хола"
+  #   action:
+  #     service: light.turn_off
+  #     target:
+  #       entity_id: light.light2
+  #     response: "Изключих лампата в хола."
 
   # Intent-script mode (no action/query): HA must define an intent_script
   # entry with this exact name. Example:
