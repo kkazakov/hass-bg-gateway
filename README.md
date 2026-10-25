@@ -108,6 +108,16 @@ commands:
       target: { entity_id: light.light2 }
       response: "Изключих лампата в хола."
 
+  HallLightOn:                  # second action, same shape
+    speak: false
+    phrases:
+      - "включи лампата в хола"
+      - "светни лампата в хола"
+    action:
+      service: light.turn_on
+      target: { entity_id: light.light2 }
+      response: "Включих лампата в хола."
+
   OutsideTemperature:           # query: read an entity, speak the answer
     speak: true
     phrases:

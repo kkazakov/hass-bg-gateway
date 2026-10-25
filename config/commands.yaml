@@ -31,6 +31,21 @@ commands:
         entity_id: light.light2
       response: "Изключих лампата в хола."
 
+  HallLightOn:
+    speak: false
+    phrases:
+      - "включи лампата в хола"
+      - "светни лампата в хола"
+      - "включи осветлението в хола"
+    hotwords:
+      - "лампата"
+      - "хола"
+    action:
+      service: light.turn_on
+      target:
+        entity_id: light.light2
+      response: "Включих лампата в хола."
+
   OutsideTemperature:
     speak: true
     phrases:
