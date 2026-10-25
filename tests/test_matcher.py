@@ -96,6 +96,17 @@ def test_asr_slip_on_the_verb_is_still_allowed() -> None:
     assert match.intent == "CorridorLightOn"
 
 
+def test_close_variants_of_the_same_intent_are_not_ambiguous() -> None:
+    matcher = Matcher(
+        {"AllOn": CommandConfig(phrases=["включи всички лампи", "включи всички лампа"])},
+        threshold=80,
+        margin=5,
+    )
+    match = matcher.match("включи всички ламп")
+    assert match.ok
+    assert match.intent == "AllOn"
+
+
 def test_ambiguous_input_is_rejected() -> None:
     matcher = Matcher(
         {

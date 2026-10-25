@@ -86,6 +86,18 @@ curl -s -X POST localhost:8080/v1/voice -F audio=@/tmp/hall.wav | jq
 
 ---
 
+## Current command set
+
+| Say | Intent | What runs |
+|---|---|---|
+| „изключи лампата в хола“ / „изгаси лампата в хола“ | `HallLightOff` | `light.turn_off light.light2` |
+| „включи лампата в хола“ / „светни лампата в хола“ | `HallLightOn` | `light.turn_on light.light2` |
+| „включи нощно осветление“ | `NightLight` | `scene.turn_on scene.night_light` |
+| „включи осветлението“ / „включи всички светлини“ / „включи всички лампи“ | `AllLightsOn` | `scene.turn_on scene.all_lights_on` |
+| „изключи осветлението“ / „изключи всички светлини“ / „изключи всички лампи“ | `AllLightsOff` | `scene.turn_on scene.all_lights_off` |
+| „каква е температурата в хола“ | `HallTemperature` | reads `sensor.down_temperature`, speaks the answer |
+| „каква е температурата навън“ / „колко градуса е навън“ | `OutsideTemperature` | reads `sensor.outside_temp`, speaks the answer |
+
 ## Configuration
 
 ### `config/commands.yaml`

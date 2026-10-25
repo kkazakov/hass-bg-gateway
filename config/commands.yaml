@@ -46,6 +46,60 @@ commands:
         entity_id: light.light2
       response: "Включих лампата в хола."
 
+  NightLight:
+    speak: false
+    phrases:
+      - "включи нощно осветление"
+      - "пусни нощното осветление"
+      - "нощно осветление"
+    action:
+      service: scene.turn_on
+      target:
+        entity_id: scene.night_light
+      response: "Включих нощното осветление."
+
+  AllLightsOn:
+    speak: false
+    phrases:
+      - "включи осветлението"
+      - "включи всички светлини"
+      - "включи всички лампи"
+      - "пусни всички лампи"
+    action:
+      service: scene.turn_on
+      target:
+        entity_id: scene.all_lights_on
+      response: "Включих всички светлини."
+
+  AllLightsOff:
+    speak: false
+    phrases:
+      - "изключи осветлението"
+      - "изключи всички светлини"
+      - "изключи всички лампи"
+      - "загаси всички лампи"
+    action:
+      service: scene.turn_on
+      target:
+        entity_id: scene.all_lights_off
+      response: "Изключих всички светлини."
+
+  HallTemperature:
+    speak: true
+    phrases:
+      - "каква е температурата в хола"
+      - "колко градуса е в хола"
+      - "температурата в хола"
+    hotwords:
+      - "температурата"
+      - "хола"
+    query:
+      entity_id: sensor.down_temperature
+      round: 1
+      unit: "градуса"
+      unit_singular: "градус"
+      template: "В момента температурата в хола е {value} {unit}."
+
   OutsideTemperature:
     speak: true
     phrases:

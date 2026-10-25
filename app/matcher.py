@@ -114,7 +114,10 @@ class Matcher:
             query, self._choices, scorer=fuzz.WRatio, limit=2
         )
         best_choice, best_score, best_index = results[0]
-        second_score = results[1][1] if len(results) > 1 else 0.0
+        if len(results) > 1:
+            _, second_score, second_index = results[1]
+        else:
+            second_score, second_index = 0.0, None
 
         if best_score < self._threshold:
             return Match(
@@ -135,7 +138,15 @@ class Matcher:
                 + ",".join(sorted(phrase_classes))
                 + ")",
             )
-        if second_score and (best_score - second_score) < self._margin:
+        same_intent = (
+            second_index is not None
+            and self._intents[second_index] == self._intents[best_index]
+        )
+        if (
+            second_score
+            and (best_score - second_score) < self._margin
+            and not same_intent
+        ):
             return Match(
                 None, None, float(best_score), float(second_score), transcript,
                 f"ambiguous (margin {best_score - second_score:.1f} < {self._margin})",
