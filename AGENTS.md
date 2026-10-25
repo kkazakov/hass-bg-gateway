@@ -12,9 +12,10 @@ a **fixed, manually mapped command set**:
 3. fuzzy-matches the transcript against `config/commands.yaml`,
 4. executes the command: a service call, an entity read, or
    `POST /api/intent/handle` with the intent **name**,
-5. returns the `intent_script` reply text, plus Piper audio for `speak: true`.
+5. returns the reply text, plus audio for `speak: true` (female gTTS by default,
+   local Piper fallback).
 
-No LLM, no cloud, no general NLU. Home Assistant owns device mapping and reply
+No LLM, no cloud ASR, no general NLU. Home Assistant owns device mapping and reply
 text; this service owns speech and phrase matching.
 
 ## Directory Structure
@@ -28,7 +29,7 @@ app/
   matcher.py     normalise + RapidFuzz WRatio matching
   ha.py          HA client: intent, service call, state read (httpx)
   reply.py       Bulgarian query rendering (value/unit/plural)
-  tts.py         Piper voice (optional, never used for actions)
+  tts.py         gTTS female voice + Piper fallback (never used for actions)
   runtime.py     Runtime dataclass + build_runtime
   api/deps.py    runtime lookup + API key auth
   api/routes/    voice.py, health.py, admin.py
@@ -81,6 +82,10 @@ with a fake ASR/HA response.
   service replies "Готово." — add the block.
 - **Reload rebuilds the ASR recognizer** (~1 s) so hotwords change. In-flight
   requests finish on the old runtime.
+- **TTS provider is configurable**: `BGV_TTS_PROVIDER=gtts` (female, cloud,
+  MP3, ~400 ms) or `piper` (local male, WAV, ~80 ms). gTTS failures fall back to
+  Piper automatically; the audio route serves whatever media type the provider
+  returns, so URLs end in `.mp3` or `.wav`.
 - **Intent names must match exactly** between `config/commands.yaml` and HA's
   `intent_script` (only relevant in intent mode).
 - **HA 2026.10 rejects a nested `target` on REST service calls** (400). Target

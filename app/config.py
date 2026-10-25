@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     tail_silence_s: float = 1.0
 
     tts_enabled: bool = True
+    tts_provider: str = "gtts"  # gtts (female, cloud) | piper (male, local)
+    tts_language: str = "bg"
+    tts_timeout_s: float = 5.0
     request_timeout_s: float = 15.0
 
     log_level: str = "INFO"

@@ -23,6 +23,8 @@ async def health(request: Request, deep: bool = Query(default=False)) -> dict:
         "asr": {"ready": True, "model": "bg-streaming"},
         "tts": {
             "ready": runtime.tts.ready,
+            "provider": runtime.tts.provider,
+            "voice": runtime.tts.voice,
             "reason": runtime.tts.unavailable_reason,
         },
         "instances": instances,

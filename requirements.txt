@@ -16,6 +16,7 @@ numpy>=1.26
 sherpa-onnx==2.0.0
 sentencepiece>=0.2.0
 piper-tts>=1.2.0
+gTTS>=2.5.0
 
 # Tests
 pytest>=8.0.0

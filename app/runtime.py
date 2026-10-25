@@ -19,7 +19,7 @@ from .config import (
 )
 from .ha import HaClient
 from .matcher import Matcher
-from .tts import TtsEngine
+from .tts import AudioClip, TtsService
 
 log = logging.getLogger(__name__)
 
@@ -39,9 +39,17 @@ class TtsLike(Protocol):
     def ready(self) -> bool: ...
 
     @property
+    def provider(self) -> str: ...
+
+    @property
+    def voice(self) -> str: ...
+
+    @property
     def unavailable_reason(self) -> str | None: ...
 
-    def synthesize(self, text: str) -> bytes | None: ...
+    def synthesize(self, text: str) -> AudioClip | None: ...
+
+    def close(self) -> None: ...
 
 
 class HaLike(Protocol):
@@ -86,6 +94,7 @@ class Runtime:
         self._closed = True
         for client in self.ha.values():
             await client.aclose()
+        self.tts.close()
 
 
 async def build_runtime(settings: Settings) -> Runtime:
@@ -104,7 +113,13 @@ async def build_runtime(settings: Settings) -> Runtime:
         hotwords=commands.hotwords(),
         hotwords_score=settings.hotwords_score,
     )
-    tts = TtsEngine(settings.models_dir, enabled=settings.tts_enabled)
+    tts = TtsService(
+        settings.models_dir,
+        provider=settings.tts_provider,
+        language=settings.tts_language,
+        enabled=settings.tts_enabled,
+        timeout_s=settings.tts_timeout_s,
+    )
 
     clients: dict[str, HaClient] = {}
     try:
@@ -121,7 +136,7 @@ async def build_runtime(settings: Settings) -> Runtime:
         len(commands.commands),
         ",".join(clients),
         default,
-        "on" if tts.ready else "off",
+        f"{tts.provider}:{tts.voice}" if tts.ready else "off",
     )
     return Runtime(
         settings=settings,

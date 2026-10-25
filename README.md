@@ -2,7 +2,9 @@
 
 Bulgarian voice control for Home Assistant with a **small, fixed command set**.
 Speak a configured phrase → the gateway transcribes it, matches it to a command,
-and acts on Home Assistant. No cloud, no LLM, no general NLU.
+and acts on Home Assistant. No cloud ASR, no LLM, no general NLU. Query answers
+are spoken with a female Bulgarian voice (Google TTS by default, local Piper as
+fallback); actions stay text-only.
 
 Commands can be mapped in two ways, per command:
 
@@ -14,13 +16,15 @@ Tested against Home Assistant 2026.10.1 with `light.light2` and `sensor.outside_
 ```
 mic → 16 kHz WAV → sherpa-onnx ASR (Bulgarian, int8) → fuzzy phrase match
     → POST /api/intent/handle {name} → intent_script → light.turn_off
-    → text reply (actions)            → text + Piper audio (queries)
+    → text reply (actions)            → text + female TTS audio (queries)
 ```
 
 Measured on a Ryzen AI 9 HX 370 (warm models, this repo's service): **~60–90 ms ASR**
 for a 2 s command (including 1 s of padding), **~0.2 ms** phrase match, ~15–60 ms
 Home Assistant call — **~90–110 ms end to end**, comfortably inside a 500 ms
-budget. TTS (only for `speak: true`) is ~76–78 ms.
+budget. TTS (only for `speak: true`) is ~350–450 ms with the Google female voice
+(~80 ms if you switch to local Piper), so a spoken query lands around 480 ms cold
+and ~100 ms once the phrase is cached.
 
 ---
 
@@ -224,7 +228,7 @@ app/
   asr.py               sherpa-onnx streaming model, hotwords, thread lock
   matcher.py           normalise + RapidFuzz phrase matching
   ha.py                Home Assistant intent client
-  tts.py               Piper (optional; actions never use it)
+  tts.py               gTTS (female) + Piper fallback; actions never use it
   runtime.py           wiring + lifecycle
   api/routes/          voice, health, admin
 config/
@@ -253,9 +257,10 @@ without the 130 MB of models.
 | ASR, 2.2 s command + padding | 60–90 ms |
 | Phrase match (30–40 phrases) | 0.1–0.2 ms |
 | HA `intent/handle` (LAN) | 15–60 ms |
-| Piper synthesis (1.6 s reply) | 78 ms |
+| gTTS synthesis (female, 3.8 s reply) | 350–450 ms |
+| Piper synthesis (local fallback) | 78 ms |
 | **Total, action** | **~90–120 ms** (measured 121 ms with real HA) |
-| **Total, spoken query (to audio)** | **~90 ms cached / ~270 ms first synthesis** |
+| **Total, spoken query (to audio)** | **~100 ms cached / ~480 ms cold (gTTS)** |
 
 Numbers are from a fast x86 CPU (AVX-512 VNNI). Expect 2–4× on an N100/Pi 5,
 which still fits 500 ms.
@@ -266,12 +271,12 @@ Run against Home Assistant 2026.10.1 (`100.101.102.12:8123`):
 
 ```
 "изключи лампата в хола"      → light.light2 on → off, 121 ms, text reply
-"каква е температурата навън" → "В момента температурата навън е 11 градуса."
-                                 spoken WAV, 268 ms first / 93 ms cached
+"каква е температурата навън" → "В момента температурата навън е 12 градуса."
+                                 spoken MP3 (female, 210 Hz), 477 ms cold / 100 ms cached
 ```
 
 The spoken answer comes from `sensor.outside_temp` (10.75 °C → rounded 11) and is
-synthesized locally; the action path returns text only.
+synthesized by Google TTS (female, ~210 Hz); the action path returns text only.
 
 ## Limitations
 
@@ -280,12 +285,16 @@ synthesized locally; the action path returns text only.
 - The ASR recognizer is serialised by a lock — fine for a home, not a call centre.
 - HA's `intent_script` runs with full access; do not expose this API to the
   internet without `BGV_API_KEY` and a reverse proxy.
-- Piper voice `bg_BG-dimitar-medium` is the only Bulgarian voice; replies are
-  male and "medium" quality.
+- Spoken query answers use Google TTS by default (internet, text leaves the
+  machine). Set `BGV_TTS_PROVIDER=piper` for the offline male voice
+  `bg_BG-dimitar-medium`; if Google is unreachable the service falls back to it
+  automatically.
+- Google TTS is ~350–450 ms, so spoken queries are slower than actions. Audio is
+  cached by text, so repeats are instant.
 
 ## Roadmap
 
-- A tiny Android client (push-to-talk, multi-instance).
+- Android client: built in `../hass-bulgarian-voice` (push-to-talk, multi-gateway).
 - ESP32-S3 satellite (button + mic + amp, POST `/v1/voice/raw`).
 - Streaming WebSocket for live partials (not needed for the 500 ms target).
 - Optionally, `conversation: intents:` in HA so the same phrases can be typed.

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from ...audio import AudioError, decode_wav, pad
 from ...ha import HaError
 from ...reply import render_query
+from ...tts import AudioClip
 from ...runtime import Runtime
 from ..deps import get_runtime
 
@@ -62,13 +63,13 @@ class CommandRequest(BaseModel):
     speak: Literal["auto", "true", "false"] = "auto"
 
 
-def _store_audio(request: Request, data: bytes) -> str:
-    cache: OrderedDict[str, bytes] = request.app.state.audio_cache
+def _store_audio(request: Request, clip: AudioClip) -> str:
+    cache: OrderedDict[str, AudioClip] = request.app.state.audio_cache
     audio_id = uuid.uuid4().hex
-    cache[audio_id] = data
+    cache[audio_id] = clip
     while len(cache) > AUDIO_CACHE_SIZE:
         cache.popitem(last=False)
-    return f"/v1/audio/{audio_id}.wav"
+    return f"/v1/audio/{audio_id}.{clip.extension}"
 
 
 async def _run_pipeline(
@@ -280,15 +281,16 @@ async def command(request: Request, body: CommandRequest) -> VoiceResponse:
     )
 
 
-@router.get("/audio/{audio_id}.wav")
-async def audio(audio_id: str, request: Request) -> Response:
-    cache: OrderedDict[str, bytes] = request.app.state.audio_cache
-    data = cache.get(audio_id)
-    if data is None:
+@router.get("/audio/{filename}")
+async def audio(filename: str, request: Request) -> Response:
+    audio_id = filename.rsplit(".", 1)[0]
+    cache: OrderedDict[str, AudioClip] = request.app.state.audio_cache
+    clip = cache.get(audio_id)
+    if clip is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="audio not found or expired"
         )
-    return Response(content=data, media_type="audio/wav")
+    return Response(content=clip.data, media_type=clip.media_type)
 
 
 @router.get("/commands")

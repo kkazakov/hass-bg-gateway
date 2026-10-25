@@ -11,6 +11,7 @@ from app.config import CommandsFile, InstancesFile, Settings
 from app.main import create_app
 from app.matcher import Matcher
 from app.runtime import Runtime
+from app.tts import AudioClip
 
 COMMANDS = {
     "language": "bg",
@@ -74,11 +75,22 @@ class FakeTts:
         return self._ready
 
     @property
+    def provider(self) -> str:
+        return "gtts" if self._ready else "none"
+
+    @property
+    def voice(self) -> str:
+        return "google-bg" if self._ready else "none"
+
+    @property
     def unavailable_reason(self) -> str | None:
         return None if self._ready else "test disabled"
 
-    def synthesize(self, text: str) -> bytes | None:
-        return wav_bytes() if self._ready else None
+    def synthesize(self, text: str) -> AudioClip | None:
+        return AudioClip(wav_bytes(), "audio/wav", "wav") if self._ready else None
+
+    def close(self) -> None:
+        return None
 
 
 class FakeHa:
@@ -277,6 +289,7 @@ def test_health_and_commands() -> None:
         commands = client.get("/v1/commands").json()
     assert health["status"] == "ok"
     assert health["asr"]["ready"] is True
+    assert health["tts"]["provider"] == "gtts"
     assert health["instances"]["home"] is True
     assert commands["language"] == "bg"
     by_intent = {entry["intent"]: entry for entry in commands["commands"]}
