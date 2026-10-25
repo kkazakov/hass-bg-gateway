@@ -41,7 +41,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 ./models/fetch_models.sh
 cp .env.example .env    # BGV_HA_URL, BGV_HA_TOKEN
-uvicorn app.main:app --host 127.0.0.1 --port 8080
+uvicorn app.main:app --host 127.0.0.1 --port 8125
 pytest -q
 ```
 

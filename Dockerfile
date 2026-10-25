@@ -30,9 +30,9 @@ RUN useradd --create-home app \
 
 USER app
 
-EXPOSE 8080
+EXPOSE 8125
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD curl -fsS -H "X-API-Key: ${BGV_API_KEY:-}" http://127.0.0.1:8080/v1/health || exit 1
+    CMD curl -fsS -H "X-API-Key: ${BGV_API_KEY:-}" http://127.0.0.1:8125/v1/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8125"]

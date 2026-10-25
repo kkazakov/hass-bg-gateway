@@ -87,11 +87,11 @@ Piper voice (~130 MB); expect a few minutes. Later starts are immediate.
 
 ```bash
 # no API key:
-curl -s http://127.0.0.1:8080/v1/health?deep=true | python3 -m json.tool
+curl -s http://127.0.0.1:8125/v1/health?deep=true | python3 -m json.tool
 
 # with a key:
 curl -s -H "X-API-Key: $BGV_API_KEY" \
-  http://127.0.0.1:8080/v1/health?deep=true | python3 -m json.tool
+  http://127.0.0.1:8125/v1/health?deep=true | python3 -m json.tool
 ```
 
 Expected: `status: ok`, `asr.ready: true`, `tts.ready: true`, `ha.ready: true`.
@@ -104,11 +104,11 @@ entities first; otherwise the gateway returns `502` (entity/service not found).
 The sample WAVs match the starter phrases.
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/v1/command \
+curl -s -X POST http://127.0.0.1:8125/v1/command \
   -H 'Content-Type: application/json' \
   -d '{"text":"изключи лампата"}' | python3 -m json.tool
 
-curl -s -X POST http://127.0.0.1:8080/v1/voice \
+curl -s -X POST http://127.0.0.1:8125/v1/voice \
   -F audio=@examples/light-off.wav | python3 -m json.tool
 ```
 
@@ -120,7 +120,7 @@ then reload:
 
 ```bash
 $EDITOR config/commands.yaml
-curl -s -X POST http://127.0.0.1:8080/v1/reload \
+curl -s -X POST http://127.0.0.1:8125/v1/reload \
   -H "X-API-Key: $BGV_API_KEY"
 ```
 
@@ -254,7 +254,7 @@ An example file is in [`homeassistant/intent_script.yaml`](homeassistant/intent_
 
 ## API
 
-Base URL: `http://127.0.0.1:8080`. Interactive docs: `/docs`.
+Base URL: `http://127.0.0.1:8125`. Interactive docs: `/docs`.
 
 Authentication is disabled when `BGV_API_KEY` is empty. When set, **every `/v1`
 endpoint** — health, commands, voice, audio, reload — requires:
@@ -277,7 +277,7 @@ X-API-Key: <BGV_API_KEY>
 Text request:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/v1/command \
+curl -s -X POST http://127.0.0.1:8125/v1/command \
   -H 'Content-Type: application/json' \
   -H "X-API-Key: $BGV_API_KEY" \
   -d '{"text":"каква е температурата навън","speak":"auto"}'
@@ -330,7 +330,7 @@ docker compose up -d             # update after git pull
   `BGV_COMMANDS_FILE`) on the host and call `/v1/reload`.
 - The TTS cache lives in the `tts-cache` volume; removing it only costs one
   re-synthesis per phrase.
-- The container runs as a non-root user and exposes `8080`.
+- The container runs as a non-root user and exposes `8125`.
 
 ### Ports and LAN/tailnet access
 
@@ -338,15 +338,15 @@ The default publish is **loopback only**:
 
 ```yaml
 ports:
-  - "127.0.0.1:8080:8080"
+  - "127.0.0.1:8125:8125"
 ```
 
 For direct access from a phone on the same LAN/tailnet, change it to:
 
 ```yaml
 ports:
-  - "8080:8080"        # LAN
-  # or: "100.x.y.z:8080:8080"  # Tailscale IP only
+  - "8125:8125"        # LAN
+  # or: "100.x.y.z:8125:8125"  # Tailscale IP only
 ```
 
 Keep the API key enabled if more than one trusted device can reach it.
@@ -358,7 +358,7 @@ and renews certificates automatically:
 
 ```caddyfile
 gateway.example.com {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:8125
 }
 ```
 
@@ -372,7 +372,7 @@ openssl rand -hex 32
 BGV_API_KEY=<paste the generated value>
 ```
 
-Every client must send `X-API-Key`. Caddy handles TLS; do not publish port 8080
+Every client must send `X-API-Key`. Caddy handles TLS; do not publish port 8125
 to the internet directly. `/docs` and `/openapi.json` remain public, so block
 them at the proxy if you do not want to expose the schema.
 
@@ -386,7 +386,7 @@ cp docker-compose.yaml docker-compose.ha2.yaml
 # edit docker-compose.ha2.yaml:
 #   container_name: hass-bg-gateway-ha2
 #   env_file: .env.ha2
-#   ports: "127.0.0.1:8081:8080"
+#   ports: "127.0.0.1:8126:8125"
 docker compose -f docker-compose.ha2.yaml up -d --build
 ```
 
@@ -404,7 +404,7 @@ pip install -r requirements.txt
 cp .env.example .env
 $EDITOR .env
 
-uvicorn app.main:app --host 127.0.0.1 --port 8080
+uvicorn app.main:app --host 127.0.0.1 --port 8125
 ```
 
 Python 3.12+ is supported. `pytest -q` runs the API/matcher/audio tests with a
